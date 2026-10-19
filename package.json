@@ -1,0 +1,82 @@
+{
+  "name": "smart-cheque-printer",
+  "productName": "Smart Cheque Printer",
+  "version": "1.0.0",
+  "description": "Print cheques for any bank from a scan of a blank cheque leaf.",
+  "main": "dist/main/main/main.js",
+  "private": true,
+  "scripts": {
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.main.json --noEmit",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.smartcheque.printer",
+    "productName": "Smart Cheque Printer",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Smart Cheque Printer"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "copyright": "Copyright © 2026 Asfar"
+  },
+  "dependencies": {
+    "sql.js": "^1.15.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "jpeg-js": "^0.4.4",
+    "pdfjs-dist": "^6.4.299",
+    "pngjs": "^7.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "author": "Asfar",
+  "license": "MIT",
+  "homepage": "https://github.com/smohamedasfar-creator/smart-cheque-printer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smohamedasfar-creator/smart-cheque-printer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/smohamedasfar-creator/smart-cheque-printer/issues",
+    "email": "support@optizer.ae"
+  }
+}
