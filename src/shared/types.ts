@@ -184,8 +184,8 @@ export interface Account {
 /** One saved way of loading a cheque book into a printer, e.g. "Rear tray · date end first". */
 export interface PrintPosition {
   name: string;
-  /** Back tray (paper stands up, printed side facing you) or front drawer (paper lies flat, printed side down). */
-  tray?: 'rear' | 'front';
+  /** Back tray (paper stands up, printed side facing you), front drawer (lies flat, printed side down) or manual feed slot (lies flat, printed side up). */
+  tray?: 'rear' | 'front' | 'manual';
   rotation: FeedRotation;
   /** Top-left of the leaf's footprint on the A4 page, in mm. */
   x: number;

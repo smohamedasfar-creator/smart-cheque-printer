@@ -124,7 +124,11 @@ describe('cheque book placement', () => {
       offset_x REAL NOT NULL DEFAULT 0, offset_y REAL NOT NULL DEFAULT 0);
       INSERT INTO accounts (name) VALUES ('RAK');
       PRAGMA user_version = 2;`);
-    const upgraded = createStore(db, () => {});
+    let saved = 0;
+    const upgraded = createStore(db, () => saved++);
+    // the upgrade is written to disk at once, so a copy of the file is never half old, half new
+    expect(saved).toBe(1);
+    expect(Number(db.exec('PRAGMA user_version')[0].values[0][0])).toBe(4);
     expect(upgraded.listAccounts()[0]).toMatchObject({ name: 'RAK', feedRotation: null, pageX: null, pageY: null });
     upgraded.saveAccount({ ...upgraded.listAccounts()[0], feedRotation: 90, pageX: 10, pageY: 0 });
     expect(upgraded.listAccounts()[0].feedRotation).toBe(90);
@@ -187,6 +191,17 @@ describe('templates', () => {
   });
 });
 
+describe('print positions', () => {
+  test('saves every kind of tray and rejects unknown trays or directions', () => {
+    const pos = { name: 'Manual slot', tray: 'manual' as const, rotation: 0 as const, x: 2, y: 0 };
+    const saved = store.saveAccount({ ...account, positions: [pos], feedRotation: 0, pageX: 2, pageY: 0 });
+    expect(store.listAccounts().find(a => a.id === saved.id)?.positions).toEqual([pos]);
+    expect(() => store.saveAccount({ ...account, positions: [{ ...pos, tray: 'roof' as never }] })).toThrow(/not valid/);
+    expect(() => store.saveAccount({ ...account, positions: [], feedRotation: 45 as never })).toThrow(/feed direction/);
+    expect(() => store.saveAccount({ ...account, positions: [], pageX: Number.NaN, pageY: 0 })).toThrow(/not valid/);
+  });
+});
+
 describe('migration', () => {
   test('upgrades a version 1 database and keeps its data', async () => {
     const SQL = await initSqlJs();
@@ -195,7 +210,9 @@ describe('migration', () => {
       layout_id TEXT NOT NULL, currency TEXT NOT NULL DEFAULT 'AED', last_cheque_no TEXT NOT NULL DEFAULT '',
       offset_x REAL NOT NULL DEFAULT 0, offset_y REAL NOT NULL DEFAULT 0);
       INSERT INTO accounts (name, layout_id, last_cheque_no, offset_x) VALUES ('Old FAB', 'fab', '000555', 1.5);`);
-    const migrated = createStore(db, () => {});
+    let saved = 0;
+    const migrated = createStore(db, () => saved++);
+    expect(saved).toBe(1);
     expect(migrated.listAccounts()).toEqual([
       { id: 1, name: 'Old FAB', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '000555', offsetX: 1.5, offsetY: 0, feedRotation: null, pageX: null, pageY: null, positions: [] },
     ]);

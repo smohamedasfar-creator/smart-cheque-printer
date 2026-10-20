@@ -1,4 +1,4 @@
-import type { ChequeLayout, ChequeRecord, FeedRotation, PagePlacement, PrintSettings, RenderItem } from './types';
+import type { ChequeLayout, ChequeRecord, FeedRotation, MeasureText, PagePlacement, PrintSettings, RenderItem, TextItem } from './types';
 
 const A4 = { width: 210, height: 297 };
 
@@ -15,7 +15,7 @@ export interface PageGeometry {
 }
 
 /** Width and height a leaf covers on the page when fed with the given turn. */
-export function footprint(layout: ChequeLayout, rotation: FeedRotation): [number, number] {
+export function footprint(layout: Pick<ChequeLayout, 'chequeWidth' | 'chequeHeight'>, rotation: FeedRotation): [number, number] {
   return rotation === 90 || rotation === 270 ? [layout.chequeHeight, layout.chequeWidth] : [layout.chequeWidth, layout.chequeHeight];
 }
 
@@ -24,9 +24,10 @@ export const A4_PAGE = A4;
 export function pageGeometry(layout: ChequeLayout, settings: PrintSettings, placement?: PagePlacement): PageGeometry {
   const { chequeWidth, chequeHeight } = layout;
   const rotation = placement?.rotation ?? settings.feedRotation ?? 0;
-  // A cheque book placed by hand on the page preview prints exactly there on an A4 page.
+  // A cheque book's own print position prints exactly there, on A4 (or the sheet a wider cheque needs).
   if (placement && placement.x !== null && placement.y !== null) {
-    return { rotation, chequeWidth, chequeHeight, pageWidth: A4.width, pageHeight: A4.height, originX: placement.x, originY: placement.y };
+    const sheet = sheetFor(layout, rotation);
+    return { rotation, chequeWidth, chequeHeight, pageWidth: sheet.width, pageHeight: sheet.height, originX: placement.x, originY: placement.y };
   }
   // Fed short edge first, the cheque covers its height across the page and its width down the page.
   const [footW, footH] = rotation === 90 || rotation === 270 ? [chequeHeight, chequeWidth] : [chequeWidth, chequeHeight];
@@ -40,18 +41,6 @@ export function pageGeometry(layout: ChequeLayout, settings: PrintSettings, plac
   const edge = settings.feedEdgeMm ?? (guide === 'left' ? 0 : guide === 'right' ? pageWidth : pageWidth / 2);
   const left = guide === 'left' ? edge : guide === 'right' ? edge - footW : edge - footW / 2;
   return { ...base, pageWidth, pageHeight, originX: left + settings.offsetX, originY: settings.offsetY };
-}
-
-/** CSS transform that turns a cheque-shaped box so it lands in its footprint at the origin. */
-function chequeTransform(g: PageGeometry): string {
-  const w = round(g.chequeWidth);
-  const h = round(g.chequeHeight);
-  switch (g.rotation) {
-    case 90: return `translate(${h}mm, 0) rotate(90deg)`;
-    case 180: return `translate(${w}mm, ${h}mm) rotate(180deg)`;
-    case 270: return `translate(0, ${w}mm) rotate(-90deg)`;
-    default: return 'none';
-  }
 }
 
 const escapeHtml = (s: string) =>
@@ -108,7 +97,7 @@ body { position: relative; width: ${round(g.pageWidth)}mm; height: ${round(g.pag
 svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .cheque { position: absolute; transform-origin: 0 0; }
 </style></head><body>
-<div class="cheque" style="left:${round(g.originX)}mm;top:${round(g.originY)}mm;width:${w}mm;height:${h}mm;transform:${chequeTransform(g)}">
+<div class="cheque" style="left:${round(g.originX)}mm;top:${round(g.originY)}mm;width:${w}mm;height:${h}mm;transform:${leafTransform(g.rotation, g.chequeWidth, g.chequeHeight, 'mm')}">
 ${body.join('\n')}
 <svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}</svg>
 </div>
@@ -189,7 +178,6 @@ export function chequesToCsv(rows: ChequeRecord[], accountName: (id: number) => 
       .join('')
   );
 }
-
 // ---------------------------------------------------------------------------------------------
 // Print positions without numbers.
 // 1. The user shows how the cheque sits in the tray on a picture of the tray (drag + turn).
@@ -197,11 +185,30 @@ export function chequesToCsv(rows: ChequeRecord[], accountName: (id: number) => 
 // Both steps are converted here to the page placement the print engine uses.
 // ---------------------------------------------------------------------------------------------
 
-/** rear: paper stands in a tray at the back, printed side facing you, bottom edge goes in first.
- *  front: paper lies in a drawer/cassette, printed side facing down, far edge goes in first. */
-export type TrayKind = 'rear' | 'front';
+/** rear: paper stands at the back, printed side facing you, bottom edge goes in first.
+ *  front: paper lies in a drawer/cassette, printed side down, far edge goes in first.
+ *  manual: paper lies on a manual feed slot or bypass tray, printed side up, far edge goes in first. */
+export type TrayKind = 'rear' | 'front' | 'manual';
 
-/** How the cheque looks in the tray picture: its turn and where its footprint's top-left sits (mm on the A4 sheet picture). */
+interface TrayModel {
+  /** The page's left-right and top-bottom are reversed compared with the tray picture. */
+  flipX: boolean;
+  flipY: boolean;
+  /** The picture shows the printed side through the paper (it faces away from you). */
+  mirrored: boolean;
+  /** Picture turn of the cheque that prints with the given page rotation. */
+  turnFor: (rotation: FeedRotation) => FeedRotation;
+}
+
+const turnBy = (r: number, by: number) => ((((r + by) % 360) + 360) % 360) as FeedRotation;
+
+export const TRAY_KINDS: Record<TrayKind, TrayModel> = {
+  rear: { flipX: true, flipY: true, mirrored: false, turnFor: r => turnBy(r, 180) },
+  front: { flipX: true, flipY: false, mirrored: true, turnFor: r => r },
+  manual: { flipX: false, flipY: false, mirrored: false, turnFor: r => r },
+};
+
+/** How the cheque looks in the tray picture: its turn and where its footprint's top-left sits (mm on the sheet picture). */
 export interface TrayView {
   turn: FeedRotation;
   u: number;
@@ -214,8 +221,40 @@ export interface Placement {
   y: number;
 }
 
+export interface Sheet {
+  name: 'A4' | 'Letter' | 'Legal' | 'Custom';
+  width: number;
+  height: number;
+}
+
+const SHEETS: Sheet[] = [
+  { name: 'A4', width: 210, height: 297 },
+  { name: 'Letter', width: 215.9, height: 279.4 },
+  { name: 'Legal', width: 215.9, height: 355.6 },
+];
+
+/** The page printed for a cheque fed this way: A4 when it fits (every driver has it), else Letter or Legal, else its own size. */
+export function sheetFor(layout: Pick<ChequeLayout, 'chequeWidth' | 'chequeHeight'>, rotation: FeedRotation): Sheet {
+  const [footW, footH] = footprint(layout, rotation);
+  const fits = SHEETS.find(s => footW <= s.width + 1e-9 && footH <= s.height + 1e-9);
+  if (fits) return fits;
+  const up = (v: number) => Math.ceil(v * 10) / 10;
+  return { name: 'Custom', width: up(footW), height: Math.max(up(footH), A4.height) };
+}
+
+/** CSS transform that turns a cheque-shaped box (w × h) so it fills its footprint from the top-left corner. */
+export function leafTransform(rotation: FeedRotation, w: number, h: number, unit: 'mm' | 'px' | ''): string {
+  const n = (v: number) => `${round(v)}${unit}`;
+  switch (rotation) {
+    case 90: return `translate(${n(h)}, 0) rotate(90deg)`;
+    case 180: return `translate(${n(w)}, ${n(h)}) rotate(180deg)`;
+    case 270: return `translate(0, ${n(w)}) rotate(-90deg)`;
+    default: return 'none';
+  }
+}
+
 /** Page position (mm) of a point on the cheque, for a leaf turned by `rotation` with its footprint at the origin. */
-export function chequePointOnPage(layout: ChequeLayout, rotation: FeedRotation, cx: number, cy: number): { x: number; y: number } {
+export function chequePointOnPage(layout: Pick<ChequeLayout, 'chequeWidth' | 'chequeHeight'>, rotation: FeedRotation, cx: number, cy: number): { x: number; y: number } {
   const w = layout.chequeWidth;
   const h = layout.chequeHeight;
   switch (rotation) {
@@ -226,33 +265,46 @@ export function chequePointOnPage(layout: ChequeLayout, rotation: FeedRotation, 
   }
 }
 
-const turnBy = (r: number, by: number) => (((r + by) % 360) + 360) % 360 as FeedRotation;
 const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
 
 /** Converts what the user showed on the tray picture into the page placement. */
 export function trayToPage(layout: ChequeLayout, tray: TrayKind, view: TrayView): Placement {
+  const m = TRAY_KINDS[tray];
+  const sheet = sheetFor(layout, view.turn);
   const [footW, footH] = footprint(layout, view.turn);
-  if (tray === 'rear') {
-    // Seen from the front, the page is upside down: its top (first in) is at the bottom of the tray picture.
-    return { rotation: turnBy(view.turn, 180), x: tenth(A4.width - view.u - footW), y: tenth(A4.height - view.v - footH) };
-  }
-  // Seen from above, the printed side faces down: the page is mirrored left to right, top (first in) at the far end.
-  return { rotation: view.turn, x: tenth(A4.width - view.u - footW), y: tenth(view.v) };
+  return {
+    rotation: m.flipY ? turnBy(view.turn, 180) : view.turn,
+    x: tenth(m.flipX ? sheet.width - view.u - footW : view.u),
+    y: tenth(m.flipY ? sheet.height - view.v - footH : view.v),
+  };
 }
 
 /** The tray picture for a saved placement (inverse of trayToPage). */
 export function pageToTray(layout: ChequeLayout, tray: TrayKind, p: Placement): TrayView {
-  const turn = tray === 'rear' ? turnBy(p.rotation, 180) : p.rotation;
+  const m = TRAY_KINDS[tray];
+  const turn = m.flipY ? turnBy(p.rotation, 180) : p.rotation;
+  const sheet = sheetFor(layout, turn);
   const [footW, footH] = footprint(layout, turn);
-  return tray === 'rear'
-    ? { turn, u: tenth(A4.width - p.x - footW), v: tenth(A4.height - p.y - footH) }
-    : { turn, u: tenth(A4.width - p.x - footW), v: tenth(p.y) };
+  return {
+    turn,
+    u: tenth(m.flipX ? sheet.width - p.x - footW : p.x),
+    v: tenth(m.flipY ? sheet.height - p.y - footH : p.y),
+  };
 }
 
-/** Starting picture: cheque pushed fully into the tray and centred, turned the way most people load it. */
+/** Starting picture: cheque pushed fully into the tray and centred. */
 export function defaultTrayView(layout: ChequeLayout, tray: TrayKind, turn: FeedRotation): TrayView {
+  const sheet = sheetFor(layout, turn);
   const [footW, footH] = footprint(layout, turn);
-  return { turn, u: tenth((A4.width - footW) / 2), v: tray === 'rear' ? tenth(A4.height - footH) : 0 };
+  return { turn, u: (sheet.width - footW) / 2, v: TRAY_KINDS[tray].flipY ? sheet.height - footH : 0 };
+}
+
+/** Lines the cheque up with the tray's left guide, its centre or its right guide, as seen on the tray picture. */
+export function alignTrayView(layout: ChequeLayout, tray: TrayKind, view: TrayView, side: 'left' | 'centre' | 'right'): TrayView {
+  const sheet = sheetFor(layout, view.turn);
+  const [footW] = footprint(layout, view.turn);
+  const room = sheet.width - footW;
+  return { ...view, u: side === 'left' ? 0 : side === 'right' ? room : room / 2 };
 }
 
 /**
@@ -277,3 +329,44 @@ export const LEADING_EDGE: Record<FeedRotation, string> = {
   180: 'Bottom edge goes in first',
   270: 'Date end goes in first',
 };
+
+/** Most printers cannot print this close to the page edge (borderless printing is off for cheques). */
+export const UNPRINTABLE_EDGE_MM = 3;
+
+const CHECKED_ROLES: Partial<Record<TextItem['role'], string>> = { date: 'Date', payee: 'Payee', words: 'Amount in words', amount: 'Amount' };
+
+/** The part of a text box the text really covers, when it can be measured (left, centred or right in its box). */
+function inkSpan(item: TextItem, measure?: MeasureText): [number, number] {
+  if (!measure) return [item.x, item.x + item.width];
+  // Text wider than its box still prints in full (it is never wrapped), so use its real width.
+  const w = measure(item.text, item.fontPt);
+  const start = item.align === 'right' ? item.x + item.width - w : item.align === 'center' ? item.x + (item.width - w) / 2 : item.x;
+  return [start, start + w];
+}
+
+/** Problems with where the cheque's text lands on the printed page: off the page, or in the edge the printer cannot reach. */
+export function printProblems(items: RenderItem[], g: PageGeometry, measure?: MeasureText): string[] {
+  const off = new Set<string>();
+  const edge = new Set<string>();
+  const leaf = new Set<string>();
+  for (const item of items) {
+    const label = item.kind === 'text' ? CHECKED_ROLES[item.role] : undefined;
+    if (item.kind !== 'text' || !label || !item.text.trim()) continue;
+    const [left, right] = inkSpan(item, measure);
+    if (left < -0.05 || right > g.chequeWidth + 0.05) leaf.add(label);
+    const [a, b] = [[left, item.y], [right, item.y + item.height]].map(([cx, cy]) => chequePointOnPage(g, g.rotation, cx, cy));
+    const x1 = Math.min(a.x, b.x) + g.originX;
+    const x2 = Math.max(a.x, b.x) + g.originX;
+    const y1 = Math.min(a.y, b.y) + g.originY;
+    const y2 = Math.max(a.y, b.y) + g.originY;
+    const slack = 0.05;
+    if (x1 < -slack || y1 < -slack || x2 > g.pageWidth + slack || y2 > g.pageHeight + slack) off.add(label);
+    else if (x1 < UNPRINTABLE_EDGE_MM || y1 < UNPRINTABLE_EDGE_MM || x2 > g.pageWidth - UNPRINTABLE_EDGE_MM || y2 > g.pageHeight - UNPRINTABLE_EDGE_MM) edge.add(label);
+  }
+  const list = (s: Set<string>) => [...s].join(', ');
+  return [
+    leaf.size ? `${list(leaf)} would print past the edge of the cheque. Shorten the text or move it back in the cheque layout.` : '',
+    off.size ? `${list(off)} would print off the page. Check the print position (tray and which end goes in first).` : '',
+    edge.size ? `${list(edge)} is within ${UNPRINTABLE_EDGE_MM} mm of the page edge, where most printers cannot print, and may be cut off.` : '',
+  ].filter(Boolean);
+}

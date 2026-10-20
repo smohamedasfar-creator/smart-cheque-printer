@@ -15,15 +15,20 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
   never runs past a printed line, and lets you click the word that starts line 2.
 - **Text size** (8 pt and up) and **any installed font**; a long payee name stays on one line and shrinks to fit (never below 8 pt).
 - Crossing options: A/C Payee, Not Negotiable, strike "or bearer", cross only, none.
-- **Printer calibration** with a ruler page (once per printer); cheques can be fed sideways or vertically (short edge first); optional fine-tuning per cheque book.
+- **Print positions without numbers**: pick the tray (back tray, front drawer or manual feed slot) and which end of the cheque goes in
+  first, slide the cheque on a picture of the tray or line it up with a guide, then fix a test print by dragging the text to where
+  it landed (or one click when it printed upside down). Several saved positions per cheque book.
+- Cheques of any size: A4 page when the cheque fits, Letter or a page of its own size for wider cheques. Warns when text would
+  land off the page or in the printer's unprintable edge; text never grows taller than its writing space or runs off the leaf.
 - **Payees** list (add, edit, delete) with autocomplete when writing cheques.
 - **History** with filters (customer name, date range, cheque number, cheque book), status (printed, cleared, void), delete, totals and CSV export.
 - **Backup and restore** of all data; **Help & About** page with a how-to guide.
 
 ## Using the app
 
-1. **Settings → Printer calibration**: feed a cheque-sized plain paper like a real cheque, print the ruler page, enter the two readings.
-2. **Cheque Books → Add cheque book**: drop a scan of a blank leaf, check the layout, enter the name and last cheque number.
+1. **Cheque Books → Add cheque book**: drop a scan of a blank leaf, check the layout, enter the name and last cheque number.
+2. **Print position** (same screen): choose the tray and which end goes in first, test print on a photocopy of the cheque, and drag
+   the text to where it printed if it is off.
 3. **Write Cheque**: choose the cheque book, enter payee, amount and date, and print. Use a plain-paper test print the first time.
 
 Scan blank leaves at 300 DPI for exact sizes. Images without a recorded resolution (most phone photos) ask for the cheque width.

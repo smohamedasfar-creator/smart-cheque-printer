@@ -14,6 +14,10 @@ import type {
 
 /** Smallest font a line may shrink to so it stays inside its printed line. */
 export const MIN_PT = 8;
+/** Millimetres per typographic point. */
+export const PT_TO_MM = 25.4 / 72;
+/** Text keeps at least this far inside the cheque edge, so nothing prints off the leaf. */
+export const CHEQUE_EDGE_MM = 1;
 export const TEXT_SIZES = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20];
 const FONT_STEP = 0.25;
 
@@ -153,6 +157,16 @@ function shift(item: RenderItem, dx: number, dy: number): RenderItem {
   return { ...item, x: item.x + dx, y: item.y + dy };
 }
 
+/** A writing space trimmed to the cheque, e.g. a detected line that runs past the leaf's edge. */
+function keepOnCheque(box: FieldBox, layout: ChequeLayout): FieldBox {
+  const x1 = Math.max(box.x, CHEQUE_EDGE_MM);
+  const x2 = Math.min(box.x + box.width, layout.chequeWidth - CHEQUE_EDGE_MM);
+  const y1 = Math.max(box.y, 0);
+  const y2 = Math.min(box.y + box.height, layout.chequeHeight);
+  if (x2 - x1 < 1 || y2 - y1 < 1) return box;
+  return { ...box, x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+}
+
 /** Lays out every printed element of a cheque. Offsets are applied last, in millimetres. */
 export function renderCheque(
   layout: ChequeLayout,
@@ -163,11 +177,18 @@ export function renderCheque(
   const warnings: string[] = [];
   const caps = (s: string) => (settings.capitals ? s.toUpperCase() : s);
 
-  const size = (box: FieldBox): FieldBox => ({ ...box, fontPt: settings.textSize });
+  // The writing space kept on the cheque, with the chosen text size, never taller than the space (and never below MIN_PT).
+  const size = (box: FieldBox): FieldBox => {
+    const inside = keepOnCheque(box, layout);
+    return { ...inside, fontPt: Math.max(MIN_PT, Math.min(settings.textSize, inside.height / PT_TO_MM)) };
+  };
   const items: RenderItem[] = [payeeItem(size(layout.payee), caps(cheque.payee.trim()), measure, warnings)];
 
   const amount = `${settings.amountPrefix}${formatAmount(cheque.amountFils, { hideZeroFraction: settings.hideZeroFraction })}${settings.amountSuffix}`;
-  items.push(text('amount', amount, layout.amount, { fontPt: fitFont(amount, size(layout.amount), measure).fontPt }));
+  const amountBox = size(layout.amount);
+  const amountFit = fitFont(amount, amountBox, measure);
+  if (!amountFit.fits) warnings.push(`The amount is too long for the amount box even at ${MIN_PT} pt. Widen the amount box in the cheque layout.`);
+  items.push(text('amount', amount, amountBox, { fontPt: amountFit.fontPt }));
 
   const words = amountInWords(cheque.amountFils, {
     style: settings.wordsStyle,
@@ -178,17 +199,21 @@ export function renderCheque(
     capitals: settings.capitals,
     hyphenate: settings.hyphenate,
   });
-  const two = fitTwoLines(words, size(layout.words1), size(layout.words2), measure, cheque.wordsBreakAt);
+  const [words1, words2] = [size(layout.words1), size(layout.words2)];
+  const two = fitTwoLines(words, words1, words2, measure, cheque.wordsBreakAt);
   if (!two.fits) warnings.push('Amount in words does not fit on its two lines even at a small font. Widen the lines in the template or shorten the prefix/suffix.');
-  items.push(text('words', two.lines[0], layout.words1, { fontPt: two.fonts[0] }));
-  if (two.lines[1]) items.push(text('words', two.lines[1], layout.words2, { fontPt: two.fonts[1] }));
+  items.push(text('words', two.lines[0], words1, { fontPt: two.fonts[0] }));
+  if (two.lines[1]) items.push(text('words', two.lines[1], words2, { fontPt: two.fonts[1] }));
 
   if (layout.date.mode === 'digits') {
     const boxes = layout.date.boxes;
     dateDigits(cheque.date).forEach((digit, i) => items.push(text('date', digit, boxes[i])));
   } else {
     const written = formatDate(cheque.date, settings.dateFormat);
-    items.push(text('date', written, layout.date.box, { fontPt: fitFont(written, size(layout.date.box), measure).fontPt }));
+    const dateBox = size(layout.date.box);
+    const dateFit = fitFont(written, dateBox, measure);
+    if (!dateFit.fits) warnings.push(`The date is too long for the date line even at ${MIN_PT} pt. Choose a shorter date format or widen the date line.`);
+    items.push(text('date', written, dateBox, { fontPt: dateFit.fontPt }));
   }
 
   items.push(...crossingItems(layout, cheque.crossing));

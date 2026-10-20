@@ -90,13 +90,32 @@ async function addChequeBook(win, file, name, index) {
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   await shot(win, `${index}b-details`);
-  // choose vertical feeding and put the leaf against the right edge of the page
-  await js(win, "[...document.querySelectorAll('.feed-option')].find(b => b.textContent.includes('Vertical ↺')).click()");
-  await click(win, 'Right edge ⇥');
-  await shot(win, `${index}c-placement`);
-  check('leaf placed at right edge (vertical)', await js(win, "Number([...document.querySelectorAll('.form input[type=number]')][0].value) > 100"), true);
+  // Every tray: choose it, load the cheque date end first against the right guide, and check the picture.
+  for (const [tray, title] of [['manual', 'Manual feed slot'], ['front', 'Front drawer'], ['rear', 'Back tray']]) {
+    await js(win, `[...document.querySelectorAll('.feed-option')].find(b => b.textContent.startsWith('${title}')).click()`);
+    await js(win, "[...document.querySelectorAll('.feed-option')].find(b => b.textContent.includes('Date end first')).click()");
+    await click(win, 'Right guide ⇥');
+    await wait(150);
+    check(`${tray}: tray picture shown`, await js(win, `Boolean(document.querySelector('.tray-${tray}'))`), true);
+    check(`${tray}: cheque against the right guide`, await js(win, "(() => { const s = document.querySelector('.tray-sheet').getBoundingClientRect(); const c = document.querySelector('.tray-cheque').getBoundingClientRect(); return Math.abs(c.right - s.right) < 2; })()"), true);
+    check(`${tray}: date end first selected`, await js(win, "document.querySelector('.feed-options:not(.three) .feed-option.active')?.textContent.includes('Date end first')"), true);
+    await shot(win, `${index}c-tray-${tray}`);
+  }
+  // Fix by dragging: the test print landed 1 mm to the right, so the saved position moves the cheque back.
+  await setField(win, 'input[placeholder^="e.g. Back tray"]', 'Back tray · date end first');
+  const before = await js(win, "[...document.querySelectorAll('.tray-cheque')].length");
+  check('one cheque on the tray picture', before, 1);
+  await js(win, "document.querySelector('[aria-label=\"Move right\"]').click(); document.querySelector('[aria-label=\"Move right\"]').click()");
+  await click(win, 'Fix position');
+  await wait(150);
+  check('fix position confirmed', await js(win, "document.querySelector('.success')?.textContent.includes('1 mm right')"), true);
+  await shot(win, `${index}d-fixed`);
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
+  const saved = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  // Back tray, date end first, against the right guide = the page's left edge. Date end first, the cheque's
+  // left-to-right runs up the page, so text that landed 1 mm right means the cheque really sits 1 mm lower.
+  check(`${name}: saved position`, JSON.stringify(saved && { tray: saved.positions[0]?.tray, rotation: saved.feedRotation, x: saved.pageX, y: saved.pageY }), JSON.stringify({ tray: 'rear', rotation: 270, x: 0, y: 1 }));
 }
 
 let started = false;
@@ -117,6 +136,8 @@ async function run(win) {
   await setField(win, 'input[list="payees"]', 'Acme Gulf Contracting LLC');
   await setField(win, 'input[inputmode="decimal"]', '23456.78');
   await shot(win, '5-write-cheque');
+  check('write: saved print position offered', await js(win, "[...document.querySelectorAll('select option')].some(o => o.textContent.includes('Back tray · date end first'))"), true);
+  check('write: no page-edge warnings for the saved position', await js(win, "[...document.querySelectorAll('.warning')].map(w => w.textContent).filter(t => /page/.test(t)).join(' | ')"), '');
   // choose the word that starts line 2 of the amount in words
   await js(win, "[...document.querySelectorAll('.word-break .word')][4]?.click()");
   await shot(win, '5b-write-cheque-break');

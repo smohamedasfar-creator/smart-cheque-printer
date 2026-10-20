@@ -174,11 +174,6 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .feed-option.active { border-color: var(--primary); background: #e8f0fb; color: var(--primary); font-weight: 600; }
 .feed-icon { font-size: 22px; line-height: 1; }
 .placement-preview { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-.a4-page { position: relative; background: #fff; border: 1px solid #b8c2d3; box-shadow: 0 2px 8px rgb(0 0 0 / 10%); flex-shrink: 0; }
-.a4-feed { position: absolute; top: 4px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); pointer-events: none; }
-.a4-label { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); pointer-events: none; }
-.a4-leaf { position: absolute; cursor: move; outline: 2px solid var(--primary); touch-action: none; overflow: hidden; }
-.a4-leaf-image { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fdfbf3 center / 100% 100% no-repeat; pointer-events: none; }
 
 .positions { display: flex; flex-direction: column; gap: 6px; }
 .position { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
@@ -186,8 +181,8 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .position.active { border-color: var(--primary); background: #e8f0fb; }
 .tag { font-size: 12px; color: var(--primary); font-weight: 600; padding: 4px 6px; }
 
-.feed-options.two { grid-template-columns: repeat(2, 1fr); }
-.feed-options.two .feed-option { align-items: flex-start; text-align: left; padding: 10px 12px; }
+.feed-options.three { grid-template-columns: repeat(3, 1fr); }
+.feed-options.three .feed-option { align-items: flex-start; text-align: left; padding: 10px 12px; }
 .tray { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .tray-arrow { font-size: 12px; font-weight: 600; color: var(--primary); }
 .tray-sheet { position: relative; background: #fff; border: 1px solid #b8c2d3; box-shadow: 0 0 0 10px #3a3f47, 0 4px 14px rgb(0 0 0 / 25%); border-radius: 2px; margin: 10px; }
@@ -199,6 +194,9 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray-edge-bottom { bottom: -14px; }
 .tray-edge-top { top: -14px; }
 .tray-caption { max-width: 300px; text-align: center; }
+.tray-align { display: flex; gap: 6px; }
+.tray-align button { padding: 4px 10px; font-size: 12px; }
+.tray-manual .tray-sheet { box-shadow: 0 0 0 10px #8a93a3, 0 4px 14px rgb(0 0 0 / 20%); }
 .correction { display: flex; flex-direction: column; gap: 10px; }
 .correction-canvas { cursor: move; touch-action: none; align-self: flex-start; max-width: 100%; overflow: auto; }
 .correction-canvas .cheque-text { color: #0b5cad; }

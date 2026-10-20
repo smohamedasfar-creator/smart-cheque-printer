@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatAmount, parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque, splitIntoWords } from '../../shared/chequeRender';
-import { LEADING_EDGE, nextChequeNo, type Placement } from '../../shared/print';
+import { LEADING_EDGE, nextChequeNo, pageGeometry, printProblems, type Placement } from '../../shared/print';
 import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
@@ -106,12 +106,13 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     rendered && 'error' in rendered && rendered.error,
   ].filter(Boolean) as string[];
 
+  const placement = { rotation: account.feedRotation, x: account.pageX, y: account.pageY };
   const print = async (testPrint: boolean) => {
     if (!template || !rendered || !('print' in rendered) || !rendered.print) return;
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.chequeApi.print({ items: rendered.print.items, layout: template.layout, settings, testPrint, placement: { rotation: account.feedRotation, x: account.pageX, y: account.pageY } });
+      const result = await window.chequeApi.print({ items: rendered.print.items, layout: template.layout, settings, testPrint, placement });
       if (!result.ok) {
         setStatus({ kind: 'error', text: result.error ?? 'Printing failed' });
         return;
@@ -134,7 +135,8 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     }
   };
 
-  const warnings = rendered && 'preview' in rendered && rendered.preview ? rendered.preview.warnings : [];
+  const onPage = template && rendered && 'print' in rendered && rendered.print ? printProblems(rendered.print.items, pageGeometry(template.layout, settings, placement), measure) : [];
+  const warnings = [...(rendered && 'preview' in rendered && rendered.preview ? rendered.preview.warnings : []), ...onPage];
   const printed = (role: 'words') =>
     rendered && 'preview' in rendered && rendered.preview ? rendered.preview.items.filter(i => i.kind === 'text' && i.role === role).map(i => (i.kind === 'text' ? i.text : '')) : [];
   const wordLines = printed('words');

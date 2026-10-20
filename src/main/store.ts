@@ -70,9 +70,10 @@ const SCHEMA_VERSION = 4;
  * Version 1 stored a built-in bank layout id per account; version 2 links accounts to uploaded templates;
  * version 3 adds each cheque book's feed direction and page position; version 4 adds saved print positions.
  */
-function migrate(db: Database) {
+/** Returns true when an existing database was upgraded (it should be saved straight away). */
+function migrate(db: Database): boolean {
   const version = Number(db.exec('PRAGMA user_version')[0].values[0][0]);
-  if (version >= SCHEMA_VERSION) return;
+  if (version >= SCHEMA_VERSION) return false;
   const columns = db.exec("PRAGMA table_info('accounts')")[0]?.values.map(v => String(v[1])) ?? [];
   if (columns.includes('layout_id')) {
     db.exec(`BEGIN;
@@ -90,9 +91,11 @@ function migrate(db: Database) {
     }
   }
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  return version > 0 || columns.length > 0;
 }
 
 const ROTATIONS = [0, 90, 180, 270];
+const TRAYS = ['rear', 'front', 'manual'];
 
 function parsePositions(raw: SqlValue | undefined): PrintPosition[] {
   if (raw === null || raw === undefined || raw === '') return [];
@@ -106,7 +109,10 @@ function parsePositions(raw: SqlValue | undefined): PrintPosition[] {
 
 function isPosition(p: unknown): p is PrintPosition {
   const v = p as PrintPosition;
-  return Boolean(v) && typeof v.name === 'string' && ROTATIONS.includes(v.rotation) && Number.isFinite(v.x) && Number.isFinite(v.y);
+  return (
+    Boolean(v) && typeof v.name === 'string' && ROTATIONS.includes(v.rotation) && Number.isFinite(v.x) && Number.isFinite(v.y) &&
+    (v.tray === undefined || TRAYS.includes(v.tray))
+  );
 }
 
 function toAccount(r: Row): Account {
@@ -153,8 +159,9 @@ function toCheque(r: Row): ChequeRecord {
 
 /** Data access over a sql.js database. `persist` is called after every committed write. */
 export function createStore(db: Database, persist: () => void) {
-  migrate(db);
+  const upgraded = migrate(db);
   db.exec(SCHEMA);
+  if (upgraded) persist();
 
   const all = (sql: string, params: SqlValue[] = []): Row[] => {
     const stmt = db.prepare(sql);
@@ -198,6 +205,7 @@ export function createStore(db: Database, persist: () => void) {
       if (input.feedRotation !== null && !ROTATIONS.includes(input.feedRotation)) throw new Error('Unknown feed direction');
       const positions = input.positions ?? [];
       if (!positions.every(isPosition)) throw new Error('A saved print position is not valid');
+      if ([input.pageX, input.pageY].some(v => v != null && !Number.isFinite(v))) throw new Error('The print position is not valid');
       const values = [input.name.trim(), input.accountNo.trim(), input.templateId, input.currency, input.lastChequeNo, input.offsetX, input.offsetY, input.feedRotation ?? null, input.pageX ?? null, input.pageY ?? null, JSON.stringify(positions)];
       return write(() => {
         if (input.id) {

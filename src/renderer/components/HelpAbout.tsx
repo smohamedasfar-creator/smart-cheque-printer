@@ -3,16 +3,16 @@ import { APP_LINKS, displayPhone, resolveAppLink } from '../../shared/appLinks';
 
 const STEPS: Array<[string, string]> = [
   [
-    'Calibrate your printer (once)',
-    'Settings → Printer. Choose how the cheque goes in (sideways or vertical) and which guide you push it against. Feed a plain paper exactly like a cheque, print the ruler page and type the ruler numbers at that guide edge and at the top. One calibration works for every bank.',
-  ],
-  [
     'Add a cheque book',
     'Cheque Books → Add cheque book. Scan a blank cheque leaf (300 DPI PDF or JPG is best; a full A4 scan or a cropped image both work) and drop it in. The app measures the cheque and finds the date, payee, amount-in-words lines and amount box.',
   ],
   [
     'Check the layout',
     'Each field is shown on your cheque with sample text. Drag a box to move it, drag its corner to resize, or use the arrow keys. "Line ends at" decides where text wraps to the next line. Then enter the cheque book name and last cheque number.',
+  ],
+  [
+    'Show how the cheque goes into your printer',
+    'Cheque Books → Details. Choose the tray (back tray, front drawer or manual feed slot) and which end of the cheque goes in first, then slide the cheque on the tray picture to where it sits, or press a guide button. Press Test print with a photocopy of the cheque loaded the same way. If the text lands in the wrong place, drag it on the cheque picture to where it printed and press Fix position. If it printed upside down, press "Text printed upside down". Save one position for every way you load this cheque book.',
   ],
   [
     'Write and print',
@@ -26,7 +26,8 @@ const STEPS: Array<[string, string]> = [
 
 const TIPS = [
   'Feed every cheque the same way: same tray, same edge against the guide, same side up.',
-  'If one cheque book prints slightly off, use its own fine-tuning (Cheque Books → Details) instead of recalibrating.',
+  'If a cheque prints slightly off, open Write Cheque → "Printed in the wrong place? Fix it by dragging" and drag the text to where it printed.',
+  'Text cannot print within about 3 mm of the page edge on most printers. If the app warns about this, move the cheque away from that guide or load it the other way round.',
   'Choose the text size and font once in Settings. A long payee name stays on one line and gets smaller (not below 8 pt) so it never runs past its line.',
   'Back up your data regularly (Settings → Your data). The backup file holds your cheque books, payees and history.',
 ];

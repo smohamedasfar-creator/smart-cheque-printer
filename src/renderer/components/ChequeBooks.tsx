@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { renderCheque } from '../../shared/chequeRender';
 import { blankLayout } from '../../shared/layoutDefaults';
-import { defaultTrayView, LEADING_EDGE, pageToTray, trayToPage, type Placement, type TrayKind } from '../../shared/print';
+import { defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayKind } from '../../shared/print';
 import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
@@ -203,14 +203,18 @@ export function activePositionIndex(a: Pick<Account, 'positions' | 'feedRotation
   return a.positions.findIndex(p => p.rotation === a.feedRotation && p.x === a.pageX && p.y === a.pageY);
 }
 
+const TRAYS: Array<{ value: TrayKind; title: string; hint: string }> = [
+  { value: 'rear', title: 'Back tray', hint: 'Paper stands up behind the printer, printed side facing you (most ink tank printers)' },
+  { value: 'front', title: 'Front drawer', hint: 'Paper lies flat in a drawer or cassette, printed side down (most laser printers)' },
+  { value: 'manual', title: 'Manual feed slot', hint: 'Paper lies flat on a manual feed or bypass tray, printed side up' },
+];
+
 export function describePosition(p: PrintPosition): string {
-  return `${p.tray === 'front' ? 'Front drawer' : 'Back tray'} · ${LEADING_EDGE[p.rotation]}`;
+  return `${TRAYS.find(t => t.value === (p.tray ?? 'rear'))?.title} · ${LEADING_EDGE[p.rotation]}`;
 }
 
-const TRAYS: Array<{ value: TrayKind; title: string; hint: string }> = [
-  { value: 'rear', title: 'Back tray', hint: 'Paper stands up behind the printer (Epson L-series, most ink tanks)' },
-  { value: 'front', title: 'Front drawer', hint: 'Paper lies flat in a drawer, printed side down (most HP, Brother, Canon lasers)' },
-];
+/** The way most people load a cheque in each tray: date end first in a back tray, top edge first when lying flat. */
+const defaultTurn = (t: TrayKind) => TRAY_KINDS[t].turnFor(t === 'rear' ? 270 : 0);
 
 function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsProps) {
   const positions0 = account.positions ?? [];
@@ -230,20 +234,21 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const placement: Placement | null = layout
     ? draft.pageX !== null && draft.pageY !== null && draft.feedRotation !== null
       ? { rotation: draft.feedRotation, x: draft.pageX, y: draft.pageY }
-      : trayToPage(layout, tray, defaultTrayView(layout, tray, tray === 'rear' ? 90 : 0))
+      : trayToPage(layout, tray, defaultTrayView(layout, tray, defaultTurn(tray)))
     : null;
   const view = layout && placement ? pageToTray(layout, tray, placement) : null;
   const setPlacement = (p: Placement) => setDraft(d => ({ ...d, feedRotation: p.rotation, pageX: p.x, pageY: p.y }));
 
   const chooseTray = (t: TrayKind) => {
     setTray(t);
-    if (layout) setPlacement(trayToPage(layout, t, defaultTrayView(layout, t, t === 'rear' ? 90 : 0)));
+    // A name the app filled in follows the tray; a name the user typed is kept.
+    if (!posName.trim() || TRAYS.some(x => x.title === posName)) setPosName(TRAYS.find(x => x.value === t)?.title ?? '');
+    if (layout) setPlacement(trayToPage(layout, t, defaultTrayView(layout, t, defaultTurn(t))));
   };
   /** One of the four directions: re-seat the cheque pushed fully in and centred. */
   const chooseDirection = (r: FeedRotation) => {
     if (!layout) return;
-    const turn = tray === 'rear' ? (((r + 180) % 360) as FeedRotation) : r;
-    setPlacement(trayToPage(layout, tray, defaultTrayView(layout, tray, turn)));
+    setPlacement(trayToPage(layout, tray, defaultTrayView(layout, tray, TRAY_KINDS[tray].turnFor(r))));
   };
 
   const current = (): PrintPosition | null =>
@@ -301,6 +306,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   };
 
   const rotation = placement?.rotation ?? 0;
+  const onPage = layout && sample && placement ? printProblems(sample.items, pageGeometry(layout, settings, placement), measure) : [];
   return (
     <div className="details-layout">
       <div className="form">
@@ -334,7 +340,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         <label>Position name<input value={posName} onChange={e => setPosName(e.target.value)} placeholder="e.g. Back tray · date end first" /></label>
 
         <h3>1. Which tray?</h3>
-        <div className="feed-options two">
+        <div className="feed-options three">
           {TRAYS.map(t => (
             <button key={t.value} type="button" className={tray === t.value ? 'feed-option active' : 'feed-option'} onClick={() => chooseTray(t.value)}>
               <strong>{t.title}</strong>
@@ -352,7 +358,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
             </button>
           ))}
         </div>
-        <p className="hint">Then drag the cheque on the tray picture to where it really sits, if it is not centred.</p>
+        <p className="hint">Then slide the cheque on the tray picture to where it really sits, or line it up with a guide.</p>
+        {onPage.map(w => <p key={w} className="warning">{w}</p>)}
 
         <h3>3. Test print and fix by dragging</h3>
         <p className="hint">
@@ -380,19 +387,19 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
           />
           <div className="correction-panel">
             <h3>3. Drag the text to where it printed</h3>
-              {template && sample && placement && (
-          <PrintCorrection
-            layout={template.layout}
-            image={template.image}
-            items={sample.items}
-            fontFamily={settings.fontFamily}
-            placement={placement}
-            onApply={(next, what) => {
-              setPlacement(next);
-              setMessage({ kind: 'ok', text: `${what} Press Save cheque book to keep it.` });
-            }}
-          />
-        )}
+            {sample && placement && (
+              <PrintCorrection
+                layout={template.layout}
+                image={template.image}
+                items={sample.items}
+                fontFamily={settings.fontFamily}
+                placement={placement}
+                onApply={(next, what) => {
+                  setPlacement(next);
+                  setMessage({ kind: 'ok', text: `${what} Press Save cheque book to keep it.` });
+                }}
+              />
+            )}
           </div>
         </div>
       )}
