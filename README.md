@@ -28,6 +28,13 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 
 Scan blank leaves at 300 DPI for exact sizes. Images without a recorded resolution (most phone photos) ask for the cheque width.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+Releases are built by GitHub Actions from this repository and approved by the maintainer before publishing.
+See [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) for team roles and the privacy policy: this program will not transfer
+any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
 ## Security and privacy
 
 - Works fully offline: no network requests, no API keys, no telemetry. Data stays in `%APPDATA%\Smart Cheque Printer`.
