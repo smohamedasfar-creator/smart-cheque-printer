@@ -8,6 +8,7 @@ import { ChequeCanvas } from './ChequeCanvas';
 import { activePositionIndex } from './ChequeBooks';
 import { PrintCorrection } from './PrintCorrection';
 import { WordBreakPicker } from './WordBreakPicker';
+import { useFitScale } from '../useFitScale';
 import type { Tab } from '../App';
 
 interface Props {
@@ -37,6 +38,8 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
   const account = accounts.find(a => a.id === accountId) ?? accounts[0];
   const template = templates.find(t => t.id === account?.templateId);
   const activePos = account ? activePositionIndex(account) : -1;
+  // The preview shrinks to fit its column, so wide cheques are never cut off.
+  const fit = useFitScale(template?.layout.chequeWidth ?? 200, 5);
 
   /** Makes a saved position the one this cheque book prints with (remembered for next time). */
   const choosePosition = async (i: number) => {
@@ -216,9 +219,9 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
         {status && <p className={status.kind === 'ok' ? 'success' : 'error'}>{status.text}</p>}
       </form>
 
-      <div className="preview">
+      <div className="preview" ref={fit.ref}>
         {template && rendered && 'preview' in rendered && rendered.preview && (
-          <ChequeCanvas layout={template.layout} items={rendered.preview.items} fontFamily={settings.fontFamily} image={showLeaf ? template.image : null} />
+          <ChequeCanvas layout={template.layout} items={rendered.preview.items} fontFamily={settings.fontFamily} image={showLeaf ? template.image : null} scale={fit.scale} />
         )}
         {warnings.map(w => <p key={w} className="warning">{w}</p>)}
         {template?.image && (
