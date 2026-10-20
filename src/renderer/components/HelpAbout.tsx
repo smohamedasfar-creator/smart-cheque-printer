@@ -4,7 +4,7 @@ import { APP_LINKS, displayPhone, resolveAppLink } from '../../shared/appLinks';
 const STEPS: Array<[string, string]> = [
   [
     'Calibrate your printer (once)',
-    'Settings → Printer calibration. Cut a plain paper to cheque size, feed it exactly like a real cheque, print the ruler page and type the two ruler numbers at the cheque’s left and top edges.',
+    'Settings → Printer. Choose how the cheque goes in (sideways or vertical) and which guide you push it against. Feed a plain paper exactly like a cheque, print the ruler page and type the ruler numbers at that guide edge and at the top. One calibration works for every bank.',
   ],
   [
     'Add a cheque book',

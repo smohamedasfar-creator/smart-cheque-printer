@@ -15,42 +15,68 @@ interface CalibrationProps {
 
 /** One-time setup: the ruler page shows where this printer puts a cheque on the page. */
 function PrinterCalibration({ settings, onApply }: CalibrationProps) {
+  const [guide, setGuide] = useState<PrintSettings['feedAlign']>(settings.feedEdgeMm === null && !settings.calibrated ? 'right' : settings.feedAlign);
   const [left, setLeft] = useState('');
+  const [right, setRight] = useState('');
   const [top, setTop] = useState('0');
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   const printRuler = async () => {
     const result = await window.chequeApi.printCalibration(settings.printerName);
-    setMessage(result.ok ? { kind: 'ok', text: 'Ruler page sent. Now read the numbers at the cheque edges.' } : { kind: 'error', text: result.error ?? 'Printing failed' });
+    setMessage(result.ok ? { kind: 'ok', text: 'Ruler page sent. Now read the numbers at the paper edges.' } : { kind: 'error', text: result.error ?? 'Printing failed' });
   };
+
+  const reading = (v: string) => (v.trim() === '' ? NaN : Number(v));
 
   const apply = async () => {
-    const x = Number(left);
-    const y = Number(top);
-    if (left.trim() === '' || !Number.isFinite(x) || x < 0 || x > 150 || !Number.isFinite(y) || y < 0 || y > 100) {
-      setMessage({ kind: 'error', text: 'Enter the two ruler numbers in millimetres, for example 52 and 0.' });
+    const l = reading(left);
+    const r = reading(right);
+    const y = reading(top);
+    const ok = (v: number) => Number.isFinite(v) && v >= 0 && v <= 300;
+    const needed = guide === 'left' ? [l] : guide === 'right' ? [r] : [l, r];
+    if (!needed.every(ok) || !ok(y) || (guide === 'center' && r <= l)) {
+      setMessage({ kind: 'error', text: 'Enter the ruler numbers in millimetres, for example 209 and 0.' });
       return;
     }
-    await onApply({ ...settings, paper: 'a4-portrait', feedAlign: 'left', offsetX: x, offsetY: y, calibrated: true });
-    setMessage({ kind: 'ok', text: `Saved: your printer puts the cheque ${x} mm from the left and ${y} mm from the top of the page. Do a test print to confirm.` });
+    const edge = guide === 'left' ? l : guide === 'right' ? r : (l + r) / 2;
+    await onApply({ ...settings, paper: 'a4-portrait', feedAlign: guide, feedEdgeMm: edge, offsetX: 0, offsetY: y, calibrated: true });
+    setMessage({ kind: 'ok', text: 'Calibration saved. It works for every cheque book fed this way. Do a test print to confirm.' });
   };
 
+  const guideName = { left: 'left', right: 'right', center: 'centre' }[settings.feedAlign];
   return (
     <div className={`calibration${settings.calibrated ? ' done' : ''}`}>
       <h3>{settings.calibrated ? '✓ Printer calibrated' : 'Printer calibration (do this once)'}</h3>
       {settings.calibrated && (
-        <p className="hint">Cheque position: {settings.offsetX} mm from the left, {settings.offsetY} mm from the top. Repeat only if you change printer or how you feed cheques.</p>
+        <p className="hint">
+          {settings.feedEdgeMm === null
+            ? `Cheque position: ${settings.offsetX} mm from the left, ${settings.offsetY} mm from the top (older calibration; recalibrate so every cheque size lands correctly).`
+            : `Cheques are pushed against the ${guideName} guide, at ${settings.feedEdgeMm} mm on the ruler, ${settings.offsetY} mm from the top. Repeat only if you change printer or how you feed cheques.`}
+        </p>
       )}
+      <label>
+        Which guide do you push the cheque against?
+        <select value={guide} onChange={e => setGuide(e.target.value as PrintSettings['feedAlign'])}>
+          <option value="right">Right guide (e.g. Epson rear tray)</option>
+          <option value="left">Left guide</option>
+          <option value="center">Centred (both guides)</option>
+        </select>
+      </label>
       <ol>
-        <li>Cut a plain paper to the size of your cheque (or use a spoiled cheque).</li>
-        <li>Put it in the printer <b>exactly like a real cheque</b>: same tray, same edge against the guide, same side up.</li>
+        <li>Put a plain paper (or a spoiled cheque) in the printer <b>exactly like a real cheque</b>: same tray, same direction, pushed against the same guide.</li>
         <li><button onClick={printRuler}>Print ruler page</button></li>
-        <li>On the printed paper, read the ruler number at the cheque's <b>left edge</b> and at its <b>top edge</b>.</li>
+        <li>On the printed paper, read the ruler numbers at the edges asked below.</li>
       </ol>
       <div className="row">
-        <label>Number at the left edge (mm)<input type="number" step="0.5" value={left} onChange={e => setLeft(e.target.value)} placeholder="e.g. 52" /></label>
+        {(guide === 'left' || guide === 'center') && (
+          <label>Number at the paper's left edge (mm)<input type="number" step="0.5" value={left} onChange={e => setLeft(e.target.value)} placeholder="e.g. 3" /></label>
+        )}
+        {(guide === 'right' || guide === 'center') && (
+          <label>Number at the paper's right edge (mm)<input type="number" step="0.5" value={right} onChange={e => setRight(e.target.value)} placeholder="e.g. 209" /></label>
+        )}
         <label>Number at the top edge (mm)<input type="number" step="0.5" value={top} onChange={e => setTop(e.target.value)} /></label>
       </div>
+      {guide === 'right' && <p className="hint">If the right edge is past the end of the ruler, read the left edge and add the paper's width.</p>}
       <div className="actions">
         <button className="primary" onClick={apply}>Save calibration</button>
       </div>
@@ -243,8 +269,8 @@ export function SettingsPanel({ settings, onSave }: Props) {
           </label>
         </div>
         <div className="row">
-          <label>Shift right (mm)<input type="number" step="0.5" value={draft.offsetX} onChange={e => set('offsetX', Number(e.target.value))} /></label>
-          <label>Shift down (mm)<input type="number" step="0.5" value={draft.offsetY} onChange={e => set('offsetY', Number(e.target.value))} /></label>
+          <label>Extra shift right (mm)<input type="number" step="0.5" value={draft.offsetX} onChange={e => set('offsetX', Number(e.target.value))} /></label>
+          <label>Top position (mm)<input type="number" step="0.5" value={draft.offsetY} onChange={e => set('offsetY', Number(e.target.value))} /></label>
         </div>
         <p className="hint">Calibration fills these in. Shifts apply to every account; each account also has its own fine-tuning.</p>
       </details>

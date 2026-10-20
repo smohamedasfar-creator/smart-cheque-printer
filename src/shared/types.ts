@@ -103,7 +103,10 @@ export interface PrintSettings {
   dateFormat: DateFormat;
   /** cheque: page is exactly the cheque size. a4-*: cheque is fed into an A4 page at the top edge. */
   paper: 'cheque' | 'a4-portrait' | 'a4-landscape';
+  /** The tray guide the cheque is pushed against. */
   feedAlign: 'left' | 'center' | 'right';
+  /** Ruler reading (mm from the page's left) of that guide edge, from calibration. Null = the page edge (or centre). */
+  feedEdgeMm: number | null;
   /** How the cheque goes into the printer: 0 = long edge first; 90 / 270 = short edge first (text turned clockwise / anti-clockwise); 180 = upside down. */
   feedRotation: FeedRotation;
   printerName: string;
@@ -130,6 +133,7 @@ export const DEFAULT_SETTINGS: PrintSettings = {
   // Every printer driver supports A4; many reject a custom cheque-sized page and silently fall back to A4.
   paper: 'a4-portrait',
   feedAlign: 'center',
+  feedEdgeMm: null,
   feedRotation: 0,
   printerName: '',
   calibrated: false,

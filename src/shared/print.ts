@@ -24,9 +24,11 @@ export function pageGeometry(layout: ChequeLayout, settings: PrintSettings): Pag
     return { ...base, pageWidth: footW, pageHeight: footH, originX: settings.offsetX, originY: settings.offsetY };
   }
   const [pageWidth, pageHeight] = settings.paper === 'a4-portrait' ? [A4.width, A4.height] : [A4.height, A4.width];
-  const spare = pageWidth - footW;
-  const aligned = settings.feedAlign === 'left' ? 0 : settings.feedAlign === 'right' ? spare : spare / 2;
-  return { ...base, pageWidth, pageHeight, originX: aligned + settings.offsetX, originY: settings.offsetY };
+  // Each cheque is placed against the guide it is pushed to, so cheques of any size land correctly.
+  const guide = settings.feedAlign;
+  const edge = settings.feedEdgeMm ?? (guide === 'left' ? 0 : guide === 'right' ? pageWidth : pageWidth / 2);
+  const left = guide === 'left' ? edge : guide === 'right' ? edge - footW : edge - footW / 2;
+  return { ...base, pageWidth, pageHeight, originX: left + settings.offsetX, originY: settings.offsetY };
 }
 
 /** CSS transform that turns a cheque-shaped box so it lands in its footprint at the origin. */

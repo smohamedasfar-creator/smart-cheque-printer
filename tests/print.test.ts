@@ -21,7 +21,24 @@ describe('pageGeometry', () => {
     expect(pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'a4-landscape', feedAlign: 'left' }).originX).toBe(0);
   });
 
-  test('places the cheque where the calibration readings say', () => {
+  test('places each cheque size against the calibrated guide', () => {
+    const right = { ...DEFAULT_SETTINGS, feedAlign: 'right' as const, feedEdgeMm: 209.6, offsetY: 1 };
+    expect(pageGeometry(layout, right).originX).toBeCloseTo(209.6 - 204);
+    const narrow = { ...layout, chequeWidth: 158, chequeHeight: 80 };
+    expect(pageGeometry(narrow, right).originX).toBeCloseTo(209.6 - 158);
+    // fed vertically, the footprint across the page is the cheque height
+    expect(pageGeometry(narrow, { ...right, feedRotation: 270 }).originX).toBeCloseTo(209.6 - 80);
+    expect(pageGeometry(layout, { ...right, feedRotation: 270 }).originX).toBeCloseTo(209.6 - 94);
+    expect(pageGeometry(narrow, right).originY).toBe(1);
+  });
+
+  test('centred and left guides use the centre line and the left edge', () => {
+    const narrow = { ...layout, chequeWidth: 158, chequeHeight: 80 };
+    expect(pageGeometry(narrow, { ...DEFAULT_SETTINGS, feedAlign: 'center', feedEdgeMm: 105 }).originX).toBe(105 - 79);
+    expect(pageGeometry(narrow, { ...DEFAULT_SETTINGS, feedAlign: 'left', feedEdgeMm: 3 }).originX).toBe(3);
+  });
+
+  test('keeps working with an older left-edge calibration', () => {
     const g = pageGeometry(layout, { ...DEFAULT_SETTINGS, feedAlign: 'left', offsetX: 52, offsetY: 1.5 });
     expect([g.originX, g.originY]).toEqual([52, 1.5]);
   });
