@@ -22,9 +22,9 @@ jobs:
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -51,7 +51,7 @@ jobs:
 
       - name: Upload unsigned installer
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: installer-unsigned
           path: out/*.exe
@@ -63,7 +63,7 @@ jobs:
     if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - name: Sign with SignPath
-        uses: signpath/github-action-submit-signing-request@v1
+        uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -75,7 +75,7 @@ jobs:
           output-artifact-directory: signed
 
       - name: Upload signed installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: installer-signed
           path: signed/*.exe
@@ -88,14 +88,14 @@ jobs:
     steps:
       - name: Download signed installer
         if: ${{ needs.sign.result == 'success' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: installer-signed
           path: dist
 
       - name: Download unsigned installer (signing not configured yet)
         if: ${{ needs.sign.result != 'success' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: installer-unsigned
           path: dist
