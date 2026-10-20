@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildCalibrationHtml, buildPrintHtml, chequesToCsv, footprint, nextChequeNo, pageGeometry, safeFontName } from '../src/shared/print';
+import { buildCalibrationHtml, buildPrintHtml, chequePointOnPage, correctPlacement, defaultTrayView, flipPlacement, pageToTray, trayToPage, chequesToCsv, footprint, LEADING_EDGE, nextChequeNo, pageGeometry, safeFontName } from '../src/shared/print';
 import { digitDateLayout } from './fixtures';
 import { DEFAULT_SETTINGS, type ChequeRecord, type RenderItem } from '../src/shared/types';
 
@@ -154,5 +154,52 @@ describe('chequesToCsv', () => {
       'Cheque No,Date,Payee,Amount,Account,Status,Remark\r\n' +
         '"000124","2026-10-19","Acme ""Gulf"", LLC","1250.50","FAB Main","printed",""\r\n',
     );
+  });
+});
+
+describe('print positions without numbers', () => {
+  const leaf = { ...layout, chequeWidth: 205.74, chequeHeight: 87.21 };
+  const rotations = [0, 90, 180, 270] as const;
+
+  test('back tray, cheque standing centred with the date end down, prints date end first at the page top', () => {
+    // As seen from the front: logo end up, top edge on the right = picture turned 90°.
+    const p = trayToPage(leaf, 'rear', defaultTrayView(leaf, 'rear', 90));
+    expect(p).toEqual({ rotation: 270, x: 61.4, y: 0 });
+  });
+
+  test('front drawer, cheque centred and pushed in, prints with the top edge first', () => {
+    const p = trayToPage(leaf, 'front', defaultTrayView(leaf, 'front', 0));
+    expect(p.rotation).toBe(0);
+    expect(p.x).toBeCloseTo(2.1, 0);
+    expect(p.y).toBe(0);
+  });
+
+  test.each(rotations)('tray picture and page placement convert both ways (turn %i)', turn => {
+    for (const tray of ['rear', 'front'] as const) {
+      const view = { turn, u: 20, v: 15 };
+      expect(pageToTray(leaf, tray, trayToPage(leaf, tray, view))).toEqual(view);
+    }
+  });
+
+  test.each(rotations)('a drag correction moves the next print back by exactly that much on the cheque (turn %i)', rotation => {
+    const p = { rotation, x: 61.4, y: 0 };
+    const fixed = correctPlacement(leaf, p, 3, -20);
+    // A cheque point printed with the fixed placement lands (−3, +20) mm from where the old one put it.
+    const before = chequePointOnPage(leaf, rotation, 50, 40);
+    const after = chequePointOnPage(leaf, rotation, 50 - 3, 40 + 20);
+    expect(fixed.x + before.x).toBeCloseTo(p.x + after.x, 5);
+    expect(fixed.y + before.y).toBeCloseTo(p.y + after.y, 5);
+  });
+
+  test('the RAK test print that landed 20 mm too high moves 20 mm across the page', () => {
+    expect(correctPlacement(leaf, { rotation: 270, x: 61.4, y: 0 }, 0, -20)).toEqual({ rotation: 270, x: 81.4, y: 0 });
+  });
+
+  test('upside-down fix turns the cheque round in the same spot', () => {
+    expect(flipPlacement({ rotation: 90, x: 61.4, y: 0 })).toEqual({ rotation: 270, x: 61.4, y: 0 });
+  });
+
+  test('every direction has a plain-words name', () => {
+    for (const r of rotations) expect(LEADING_EDGE[r]).toMatch(/first/);
   });
 });

@@ -177,6 +177,19 @@ export interface Account {
   /** Top-left of the leaf on the A4 page in mm, as placed in the page preview; null = the printer calibration. */
   pageX: number | null;
   pageY: number | null;
+  /** Saved ways of loading this cheque book (tray, direction, position). The active one is copied to feedRotation/pageX/pageY. */
+  positions: PrintPosition[];
+}
+
+/** One saved way of loading a cheque book into a printer, e.g. "Rear tray · date end first". */
+export interface PrintPosition {
+  name: string;
+  /** Back tray (paper stands up, printed side facing you) or front drawer (paper lies flat, printed side down). */
+  tray?: 'rear' | 'front';
+  rotation: FeedRotation;
+  /** Top-left of the leaf's footprint on the A4 page, in mm. */
+  x: number;
+  y: number;
 }
 
 /** Where and how a cheque leaf sits on the printed page, overriding the Settings defaults. */

@@ -7,6 +7,7 @@ import {
   type NewTemplate,
   type NewAccount,
   type NewCheque,
+  type PrintPosition,
   type PrintSettings,
 } from '../shared/types';
 
@@ -22,7 +23,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   offset_y REAL NOT NULL DEFAULT 0,
   feed_rotation INTEGER,
   page_x REAL,
-  page_y REAL
+  page_y REAL,
+  positions TEXT
 );`;
 
 const SCHEMA = `
@@ -62,11 +64,11 @@ export interface ChequeFilter {
 
 type Row = Record<string, SqlValue>;
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Version 1 stored a built-in bank layout id per account; version 2 links accounts to uploaded templates;
- * version 3 adds each cheque book's feed direction and page position.
+ * version 3 adds each cheque book's feed direction and page position; version 4 adds saved print positions.
  */
 function migrate(db: Database) {
   const version = Number(db.exec('PRAGMA user_version')[0].values[0][0]);
@@ -83,11 +85,28 @@ function migrate(db: Database) {
   }
   const now = db.exec("PRAGMA table_info('accounts')")[0]?.values.map(v => String(v[1])) ?? [];
   if (now.length) {
-    for (const [name, type] of [['feed_rotation', 'INTEGER'], ['page_x', 'REAL'], ['page_y', 'REAL']]) {
+    for (const [name, type] of [['feed_rotation', 'INTEGER'], ['page_x', 'REAL'], ['page_y', 'REAL'], ['positions', 'TEXT']]) {
       if (!now.includes(name)) db.exec(`ALTER TABLE accounts ADD COLUMN ${name} ${type}`);
     }
   }
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+}
+
+const ROTATIONS = [0, 90, 180, 270];
+
+function parsePositions(raw: SqlValue | undefined): PrintPosition[] {
+  if (raw === null || raw === undefined || raw === '') return [];
+  try {
+    const list = JSON.parse(String(raw));
+    return Array.isArray(list) ? list.filter(isPosition) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isPosition(p: unknown): p is PrintPosition {
+  const v = p as PrintPosition;
+  return Boolean(v) && typeof v.name === 'string' && ROTATIONS.includes(v.rotation) && Number.isFinite(v.x) && Number.isFinite(v.y);
 }
 
 function toAccount(r: Row): Account {
@@ -103,6 +122,7 @@ function toAccount(r: Row): Account {
     feedRotation: r.feed_rotation === null || r.feed_rotation === undefined ? null : (Number(r.feed_rotation) as Account['feedRotation']),
     pageX: r.page_x === null || r.page_x === undefined ? null : Number(r.page_x),
     pageY: r.page_y === null || r.page_y === undefined ? null : Number(r.page_y),
+    positions: parsePositions(r.positions),
   };
 }
 
@@ -175,18 +195,20 @@ export function createStore(db: Database, persist: () => void) {
 
     saveAccount(input: NewAccount & { id?: number }): Account {
       if (!input.name.trim()) throw new Error('Account name is required');
-      if (input.feedRotation !== null && ![0, 90, 180, 270].includes(input.feedRotation)) throw new Error('Unknown feed direction');
-      const values = [input.name.trim(), input.accountNo.trim(), input.templateId, input.currency, input.lastChequeNo, input.offsetX, input.offsetY, input.feedRotation ?? null, input.pageX ?? null, input.pageY ?? null];
+      if (input.feedRotation !== null && !ROTATIONS.includes(input.feedRotation)) throw new Error('Unknown feed direction');
+      const positions = input.positions ?? [];
+      if (!positions.every(isPosition)) throw new Error('A saved print position is not valid');
+      const values = [input.name.trim(), input.accountNo.trim(), input.templateId, input.currency, input.lastChequeNo, input.offsetX, input.offsetY, input.feedRotation ?? null, input.pageX ?? null, input.pageY ?? null, JSON.stringify(positions)];
       return write(() => {
         if (input.id) {
           db.run(
-            'UPDATE accounts SET name=?, account_no=?, template_id=?, currency=?, last_cheque_no=?, offset_x=?, offset_y=?, feed_rotation=?, page_x=?, page_y=? WHERE id=?',
+            'UPDATE accounts SET name=?, account_no=?, template_id=?, currency=?, last_cheque_no=?, offset_x=?, offset_y=?, feed_rotation=?, page_x=?, page_y=?, positions=? WHERE id=?',
             [...values, input.id],
           );
           return getAccount(input.id)!;
         }
         db.run(
-          'INSERT INTO accounts (name, account_no, template_id, currency, last_cheque_no, offset_x, offset_y, feed_rotation, page_x, page_y) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          'INSERT INTO accounts (name, account_no, template_id, currency, last_cheque_no, offset_x, offset_y, feed_rotation, page_x, page_y, positions) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
           values,
         );
         return getAccount(lastId())!;

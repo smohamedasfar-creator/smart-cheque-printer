@@ -3,3 +3,7 @@ dist/
 release/
 coverage/
 smoke-output/
+HANDOFF.md
+build-and-install.bat
+build-log.txt
+build-status.txt

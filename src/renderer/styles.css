@@ -179,3 +179,32 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .a4-label { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); pointer-events: none; }
 .a4-leaf { position: absolute; cursor: move; outline: 2px solid var(--primary); touch-action: none; overflow: hidden; }
 .a4-leaf-image { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fdfbf3 center / 100% 100% no-repeat; pointer-events: none; }
+
+.positions { display: flex; flex-direction: column; gap: 6px; }
+.position { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; }
+.position > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.position.active { border-color: var(--primary); background: #e8f0fb; }
+.tag { font-size: 12px; color: var(--primary); font-weight: 600; padding: 4px 6px; }
+
+.feed-options.two { grid-template-columns: repeat(2, 1fr); }
+.feed-options.two .feed-option { align-items: flex-start; text-align: left; padding: 10px 12px; }
+.tray { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.tray-arrow { font-size: 12px; font-weight: 600; color: var(--primary); }
+.tray-sheet { position: relative; background: #fff; border: 1px solid #b8c2d3; box-shadow: 0 0 0 10px #3a3f47, 0 4px 14px rgb(0 0 0 / 25%); border-radius: 2px; margin: 10px; }
+.tray-cheque { position: absolute; cursor: grab; outline: 2px solid var(--primary); touch-action: none; overflow: hidden; }
+.tray-cheque:active { cursor: grabbing; }
+.tray-cheque-image { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #e6f1f7 center / 100% 100% no-repeat; pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+.tray-front .tray-cheque-image { opacity: 0.75; }
+.tray-edge { position: absolute; left: -10px; right: -10px; height: 4px; background: var(--primary); }
+.tray-edge-bottom { bottom: -14px; }
+.tray-edge-top { top: -14px; }
+.tray-caption { max-width: 300px; text-align: center; }
+.correction { display: flex; flex-direction: column; gap: 10px; }
+.correction-canvas { cursor: move; touch-action: none; align-self: flex-start; max-width: 100%; overflow: auto; }
+.correction-canvas .cheque-text { color: #0b5cad; }
+.correction-tools { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.nudge { display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(3, 30px); gap: 3px; }
+.nudge button { padding: 0; }
+.correction-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.correction-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.correction-panel h3 { margin-top: 0; }

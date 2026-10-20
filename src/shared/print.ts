@@ -189,3 +189,91 @@ export function chequesToCsv(rows: ChequeRecord[], accountName: (id: number) => 
       .join('')
   );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Print positions without numbers.
+// 1. The user shows how the cheque sits in the tray on a picture of the tray (drag + turn).
+// 2. After one test print, the user drags the preview text to where it actually printed.
+// Both steps are converted here to the page placement the print engine uses.
+// ---------------------------------------------------------------------------------------------
+
+/** rear: paper stands in a tray at the back, printed side facing you, bottom edge goes in first.
+ *  front: paper lies in a drawer/cassette, printed side facing down, far edge goes in first. */
+export type TrayKind = 'rear' | 'front';
+
+/** How the cheque looks in the tray picture: its turn and where its footprint's top-left sits (mm on the A4 sheet picture). */
+export interface TrayView {
+  turn: FeedRotation;
+  u: number;
+  v: number;
+}
+
+export interface Placement {
+  rotation: FeedRotation;
+  x: number;
+  y: number;
+}
+
+/** Page position (mm) of a point on the cheque, for a leaf turned by `rotation` with its footprint at the origin. */
+export function chequePointOnPage(layout: ChequeLayout, rotation: FeedRotation, cx: number, cy: number): { x: number; y: number } {
+  const w = layout.chequeWidth;
+  const h = layout.chequeHeight;
+  switch (rotation) {
+    case 90: return { x: h - cy, y: cx };
+    case 180: return { x: w - cx, y: h - cy };
+    case 270: return { x: cy, y: w - cx };
+    default: return { x: cx, y: cy };
+  }
+}
+
+const turnBy = (r: number, by: number) => (((r + by) % 360) + 360) % 360 as FeedRotation;
+const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
+
+/** Converts what the user showed on the tray picture into the page placement. */
+export function trayToPage(layout: ChequeLayout, tray: TrayKind, view: TrayView): Placement {
+  const [footW, footH] = footprint(layout, view.turn);
+  if (tray === 'rear') {
+    // Seen from the front, the page is upside down: its top (first in) is at the bottom of the tray picture.
+    return { rotation: turnBy(view.turn, 180), x: tenth(A4.width - view.u - footW), y: tenth(A4.height - view.v - footH) };
+  }
+  // Seen from above, the printed side faces down: the page is mirrored left to right, top (first in) at the far end.
+  return { rotation: view.turn, x: tenth(A4.width - view.u - footW), y: tenth(view.v) };
+}
+
+/** The tray picture for a saved placement (inverse of trayToPage). */
+export function pageToTray(layout: ChequeLayout, tray: TrayKind, p: Placement): TrayView {
+  const turn = tray === 'rear' ? turnBy(p.rotation, 180) : p.rotation;
+  const [footW, footH] = footprint(layout, turn);
+  return tray === 'rear'
+    ? { turn, u: tenth(A4.width - p.x - footW), v: tenth(A4.height - p.y - footH) }
+    : { turn, u: tenth(A4.width - p.x - footW), v: tenth(p.y) };
+}
+
+/** Starting picture: cheque pushed fully into the tray and centred, turned the way most people load it. */
+export function defaultTrayView(layout: ChequeLayout, tray: TrayKind, turn: FeedRotation): TrayView {
+  const [footW, footH] = footprint(layout, turn);
+  return { turn, u: tenth((A4.width - footW) / 2), v: tray === 'rear' ? tenth(A4.height - footH) : 0 };
+}
+
+/**
+ * The test print landed (dx, dy) mm away from where it should be, measured on the cheque as you read it
+ * (positive = right / down). Returns the placement that prints in the right place next time.
+ */
+export function correctPlacement(layout: ChequeLayout, p: Placement, dx: number, dy: number): Placement {
+  const o = chequePointOnPage(layout, p.rotation, 0, 0);
+  const d = chequePointOnPage(layout, p.rotation, dx, dy);
+  return { rotation: p.rotation, x: tenth(p.x - (d.x - o.x)), y: tenth(p.y - (d.y - o.y)) };
+}
+
+/** The test print came out upside down on the cheque: turn it half round in the same spot. */
+export function flipPlacement(p: Placement): Placement {
+  return { ...p, rotation: turnBy(p.rotation, 180) };
+}
+
+/** Which end of the cheque goes into the printer first, in plain words. */
+export const LEADING_EDGE: Record<FeedRotation, string> = {
+  0: 'Top edge goes in first',
+  90: 'Logo end goes in first',
+  180: 'Bottom edge goes in first',
+  270: 'Date end goes in first',
+};

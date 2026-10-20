@@ -197,7 +197,7 @@ describe('migration', () => {
       INSERT INTO accounts (name, layout_id, last_cheque_no, offset_x) VALUES ('Old FAB', 'fab', '000555', 1.5);`);
     const migrated = createStore(db, () => {});
     expect(migrated.listAccounts()).toEqual([
-      { id: 1, name: 'Old FAB', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '000555', offsetX: 1.5, offsetY: 0, feedRotation: null, pageX: null, pageY: null },
+      { id: 1, name: 'Old FAB', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '000555', offsetX: 1.5, offsetY: 0, feedRotation: null, pageX: null, pageY: null, positions: [] },
     ]);
     const tpl = migrated.saveTemplate({ name: 'FAB', layout: lineDateLayout(), image: null });
     migrated.saveAccount({ ...migrated.listAccounts()[0], templateId: tpl.id });
@@ -210,5 +210,26 @@ describe('settings', () => {
     expect(store.getSettings()).toEqual(DEFAULT_SETTINGS);
     store.saveSettings({ ...DEFAULT_SETTINGS, capitals: true });
     expect(store.getSettings().capitals).toBe(true);
+  });
+});
+
+describe('print positions', () => {
+  test('saves several positions per cheque book and keeps the active one', () => {
+    const positions = [
+      { name: 'Rear tray', rotation: 270 as const, x: 81.4, y: 0 },
+      { name: 'Rear tray sideways', rotation: 0 as const, x: 2.1, y: 0 },
+    ];
+    const a = store.saveAccount({ ...account, positions, feedRotation: 270, pageX: 81.4, pageY: 0 });
+    expect(store.listAccounts()[0].positions).toEqual(positions);
+    expect(a.feedRotation).toBe(270);
+  });
+
+  test('rejects a broken position', () => {
+    expect(() => store.saveAccount({ ...account, positions: [{ name: 'x', rotation: 45 as never, x: 0, y: 0 }] })).toThrow(/position/);
+  });
+
+  test('older cheque books without positions load with an empty list', () => {
+    store.saveAccount(account);
+    expect(store.listAccounts()[0].positions).toEqual([]);
   });
 });
