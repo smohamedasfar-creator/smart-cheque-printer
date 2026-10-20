@@ -1,4 +1,4 @@
-import type { ChequeLayout, ChequeRecord, FeedRotation, PrintSettings, RenderItem } from './types';
+import type { ChequeLayout, ChequeRecord, FeedRotation, PagePlacement, PrintSettings, RenderItem } from './types';
 
 const A4 = { width: 210, height: 297 };
 
@@ -14,9 +14,20 @@ export interface PageGeometry {
   chequeHeight: number;
 }
 
-export function pageGeometry(layout: ChequeLayout, settings: PrintSettings): PageGeometry {
+/** Width and height a leaf covers on the page when fed with the given turn. */
+export function footprint(layout: ChequeLayout, rotation: FeedRotation): [number, number] {
+  return rotation === 90 || rotation === 270 ? [layout.chequeHeight, layout.chequeWidth] : [layout.chequeWidth, layout.chequeHeight];
+}
+
+export const A4_PAGE = A4;
+
+export function pageGeometry(layout: ChequeLayout, settings: PrintSettings, placement?: PagePlacement): PageGeometry {
   const { chequeWidth, chequeHeight } = layout;
-  const rotation = settings.feedRotation ?? 0;
+  const rotation = placement?.rotation ?? settings.feedRotation ?? 0;
+  // A cheque book placed by hand on the page preview prints exactly there on an A4 page.
+  if (placement && placement.x !== null && placement.y !== null) {
+    return { rotation, chequeWidth, chequeHeight, pageWidth: A4.width, pageHeight: A4.height, originX: placement.x, originY: placement.y };
+  }
   // Fed short edge first, the cheque covers its height across the page and its width down the page.
   const [footW, footH] = rotation === 90 || rotation === 270 ? [chequeHeight, chequeWidth] : [chequeWidth, chequeHeight];
   const base = { rotation, chequeWidth, chequeHeight };

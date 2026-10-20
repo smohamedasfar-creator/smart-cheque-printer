@@ -172,6 +172,18 @@ export interface Account {
   lastChequeNo: string;
   offsetX: number;
   offsetY: number;
+  /** How this cheque book's leaves go into the printer; null = the Settings default. */
+  feedRotation: FeedRotation | null;
+  /** Top-left of the leaf on the A4 page in mm, as placed in the page preview; null = the printer calibration. */
+  pageX: number | null;
+  pageY: number | null;
+}
+
+/** Where and how a cheque leaf sits on the printed page, overriding the Settings defaults. */
+export interface PagePlacement {
+  rotation: FeedRotation | null;
+  x: number | null;
+  y: number | null;
 }
 
 export interface ChequeRecord {

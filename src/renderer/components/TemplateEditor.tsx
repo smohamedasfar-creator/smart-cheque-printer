@@ -62,7 +62,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
       setWidthInput('');
       setDraft(d => ({ ...d, layout: result.layout, image: chequeImageDataUrl(loaded, result) }));
     } catch (e) {
-      setError(`Could not read this file: ${String(e)}`);
+      setError(`Could not read this file: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy('');
     }
@@ -78,7 +78,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
       await runDetection(loaded);
     } catch (e) {
       setBusy('');
-      setError(`Could not open this file: ${String(e)}`);
+      setError(`Could not open this file: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 

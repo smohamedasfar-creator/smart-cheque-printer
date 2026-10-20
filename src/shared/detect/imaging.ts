@@ -129,3 +129,17 @@ export function rotateSmall(img: Raster, degrees: number, mode: 'min' | 'bilinea
 }
 
 export const pixel = (img: Raster, x: number, y: number) => img.data[(y * img.width + x) * img.channels];
+
+/** True when an image is (almost) one flat colour, e.g. a scan that failed to draw. */
+export function isBlank(img: Raster, tolerance = 6): boolean {
+  const c = img.channels;
+  const step = Math.max(1, Math.floor((img.width * img.height) / 20000));
+  let min = 255;
+  let max = 0;
+  for (let p = 0; p < img.width * img.height; p += step) {
+    const v = img.data[p * c];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return max - min <= tolerance;
+}

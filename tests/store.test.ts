@@ -1,7 +1,7 @@
 import initSqlJs from 'sql.js';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { createStore, type Store } from '../src/main/store';
-import { DEFAULT_SETTINGS } from '../src/shared/types';
+import { DEFAULT_SETTINGS, type NewAccount } from '../src/shared/types';
 import { lineDateLayout } from './fixtures';
 
 let store: Store;
@@ -13,7 +13,7 @@ beforeEach(async () => {
   store = createStore(new SQL.Database(), () => persisted++);
 });
 
-const account = { name: 'FAB Main', accountNo: '1234567890', templateId: null as number | null, currency: 'AED', lastChequeNo: '000100', offsetX: 0, offsetY: 0 };
+const account = { name: 'FAB Main', accountNo: '1234567890', templateId: null as number | null, currency: 'AED', lastChequeNo: '000100', offsetX: 0, offsetY: 0, feedRotation: null, pageX: null, pageY: null } as NewAccount;
 
 describe('accounts', () => {
   test('creates, lists and updates accounts', () => {
@@ -104,6 +104,33 @@ describe('cheques', () => {
   });
 });
 
+describe('cheque book placement', () => {
+  test('saves feed direction and page position per cheque book', () => {
+    const a = store.saveAccount({ ...account, feedRotation: 270, pageX: 61.5, pageY: 2 });
+    expect(store.listAccounts()[0]).toMatchObject({ feedRotation: 270, pageX: 61.5, pageY: 2 });
+    store.saveAccount({ ...a, feedRotation: null, pageX: null, pageY: null });
+    expect(store.listAccounts()[0]).toMatchObject({ feedRotation: null, pageX: null, pageY: null });
+  });
+
+  test('rejects an unknown feed direction', () => {
+    expect(() => store.saveAccount({ ...account, feedRotation: 45 as never })).toThrow(/feed direction/);
+  });
+
+  test('adds the placement columns to a version 2 database', async () => {
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.exec(`CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, account_no TEXT NOT NULL DEFAULT '',
+      template_id INTEGER, currency TEXT NOT NULL DEFAULT 'AED', last_cheque_no TEXT NOT NULL DEFAULT '',
+      offset_x REAL NOT NULL DEFAULT 0, offset_y REAL NOT NULL DEFAULT 0);
+      INSERT INTO accounts (name) VALUES ('RAK');
+      PRAGMA user_version = 2;`);
+    const upgraded = createStore(db, () => {});
+    expect(upgraded.listAccounts()[0]).toMatchObject({ name: 'RAK', feedRotation: null, pageX: null, pageY: null });
+    upgraded.saveAccount({ ...upgraded.listAccounts()[0], feedRotation: 90, pageX: 10, pageY: 0 });
+    expect(upgraded.listAccounts()[0].feedRotation).toBe(90);
+  });
+});
+
 describe('payees', () => {
   test('adds, renames and deletes payees', () => {
     store.addPayee('  Beta Trading ');
@@ -170,7 +197,7 @@ describe('migration', () => {
       INSERT INTO accounts (name, layout_id, last_cheque_no, offset_x) VALUES ('Old FAB', 'fab', '000555', 1.5);`);
     const migrated = createStore(db, () => {});
     expect(migrated.listAccounts()).toEqual([
-      { id: 1, name: 'Old FAB', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '000555', offsetX: 1.5, offsetY: 0 },
+      { id: 1, name: 'Old FAB', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '000555', offsetX: 1.5, offsetY: 0, feedRotation: null, pageX: null, pageY: null },
     ]);
     const tpl = migrated.saveTemplate({ name: 'FAB', layout: lineDateLayout(), image: null });
     migrated.saveAccount({ ...migrated.listAccounts()[0], templateId: tpl.id });

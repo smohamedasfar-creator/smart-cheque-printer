@@ -7,6 +7,7 @@ import type {
   NewAccount,
   NewCheque,
   NewTemplate,
+  PagePlacement,
   PrintSettings,
   RenderItem,
 } from '../shared/types';
@@ -16,6 +17,8 @@ export interface PrintJob {
   layout: ChequeLayout;
   settings: PrintSettings;
   testPrint: boolean;
+  /** The cheque book's own feed direction and page position, when set. */
+  placement?: PagePlacement;
 }
 
 export interface ChequeApi {

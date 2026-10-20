@@ -167,3 +167,15 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 
 .botim { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--border); width: 100%; }
 .botim button { padding: 4px 12px; font-size: 13px; }
+
+/* Printer position (per cheque book) */
+.feed-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.feed-option { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; font-size: 13px; }
+.feed-option.active { border-color: var(--primary); background: #e8f0fb; color: var(--primary); font-weight: 600; }
+.feed-icon { font-size: 22px; line-height: 1; }
+.placement-preview { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.a4-page { position: relative; background: #fff; border: 1px solid #b8c2d3; box-shadow: 0 2px 8px rgb(0 0 0 / 10%); flex-shrink: 0; }
+.a4-feed { position: absolute; top: 4px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); pointer-events: none; }
+.a4-label { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); pointer-events: none; }
+.a4-leaf { position: absolute; cursor: move; outline: 2px solid var(--primary); touch-action: none; overflow: hidden; }
+.a4-leaf-image { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fdfbf3 center / 100% 100% no-repeat; pointer-events: none; }

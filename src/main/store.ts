@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS accounts (
   currency TEXT NOT NULL DEFAULT 'AED',
   last_cheque_no TEXT NOT NULL DEFAULT '',
   offset_x REAL NOT NULL DEFAULT 0,
-  offset_y REAL NOT NULL DEFAULT 0
+  offset_y REAL NOT NULL DEFAULT 0,
+  feed_rotation INTEGER,
+  page_x REAL,
+  page_y REAL
 );`;
 
 const SCHEMA = `
@@ -59,9 +62,12 @@ export interface ChequeFilter {
 
 type Row = Record<string, SqlValue>;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
-/** Version 1 stored a built-in bank layout id per account; version 2 links accounts to uploaded templates. */
+/**
+ * Version 1 stored a built-in bank layout id per account; version 2 links accounts to uploaded templates;
+ * version 3 adds each cheque book's feed direction and page position.
+ */
 function migrate(db: Database) {
   const version = Number(db.exec('PRAGMA user_version')[0].values[0][0]);
   if (version >= SCHEMA_VERSION) return;
@@ -74,6 +80,12 @@ function migrate(db: Database) {
         SELECT id, name, account_no, NULL, currency, last_cheque_no, offset_x, offset_y FROM accounts_v1;
       DROP TABLE accounts_v1;
       COMMIT;`);
+  }
+  const now = db.exec("PRAGMA table_info('accounts')")[0]?.values.map(v => String(v[1])) ?? [];
+  if (now.length) {
+    for (const [name, type] of [['feed_rotation', 'INTEGER'], ['page_x', 'REAL'], ['page_y', 'REAL']]) {
+      if (!now.includes(name)) db.exec(`ALTER TABLE accounts ADD COLUMN ${name} ${type}`);
+    }
   }
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
@@ -88,6 +100,9 @@ function toAccount(r: Row): Account {
     lastChequeNo: String(r.last_cheque_no),
     offsetX: Number(r.offset_x),
     offsetY: Number(r.offset_y),
+    feedRotation: r.feed_rotation === null || r.feed_rotation === undefined ? null : (Number(r.feed_rotation) as Account['feedRotation']),
+    pageX: r.page_x === null || r.page_x === undefined ? null : Number(r.page_x),
+    pageY: r.page_y === null || r.page_y === undefined ? null : Number(r.page_y),
   };
 }
 
@@ -160,17 +175,18 @@ export function createStore(db: Database, persist: () => void) {
 
     saveAccount(input: NewAccount & { id?: number }): Account {
       if (!input.name.trim()) throw new Error('Account name is required');
-      const values = [input.name.trim(), input.accountNo.trim(), input.templateId, input.currency, input.lastChequeNo, input.offsetX, input.offsetY];
+      if (input.feedRotation !== null && ![0, 90, 180, 270].includes(input.feedRotation)) throw new Error('Unknown feed direction');
+      const values = [input.name.trim(), input.accountNo.trim(), input.templateId, input.currency, input.lastChequeNo, input.offsetX, input.offsetY, input.feedRotation ?? null, input.pageX ?? null, input.pageY ?? null];
       return write(() => {
         if (input.id) {
           db.run(
-            'UPDATE accounts SET name=?, account_no=?, template_id=?, currency=?, last_cheque_no=?, offset_x=?, offset_y=? WHERE id=?',
+            'UPDATE accounts SET name=?, account_no=?, template_id=?, currency=?, last_cheque_no=?, offset_x=?, offset_y=?, feed_rotation=?, page_x=?, page_y=? WHERE id=?',
             [...values, input.id],
           );
           return getAccount(input.id)!;
         }
         db.run(
-          'INSERT INTO accounts (name, account_no, template_id, currency, last_cheque_no, offset_x, offset_y) VALUES (?,?,?,?,?,?,?)',
+          'INSERT INTO accounts (name, account_no, template_id, currency, last_cheque_no, offset_x, offset_y, feed_rotation, page_x, page_y) VALUES (?,?,?,?,?,?,?,?,?,?)',
           values,
         );
         return getAccount(lastId())!;

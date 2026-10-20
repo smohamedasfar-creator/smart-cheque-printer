@@ -90,6 +90,11 @@ async function addChequeBook(win, file, name, index) {
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   await shot(win, `${index}b-details`);
+  // choose vertical feeding and put the leaf against the right edge of the page
+  await js(win, "[...document.querySelectorAll('.feed-option')].find(b => b.textContent.includes('Vertical ↺')).click()");
+  await click(win, 'Right edge ⇥');
+  await shot(win, `${index}c-placement`);
+  check('leaf placed at right edge (vertical)', await js(win, "Number([...document.querySelectorAll('.form input[type=number]')][0].value) > 100"), true);
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
 }

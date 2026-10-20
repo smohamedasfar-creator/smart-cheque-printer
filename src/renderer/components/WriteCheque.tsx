@@ -91,7 +91,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.chequeApi.print({ items: rendered.print.items, layout: template.layout, settings, testPrint });
+      const result = await window.chequeApi.print({ items: rendered.print.items, layout: template.layout, settings, testPrint, placement: { rotation: account.feedRotation, x: account.pageX, y: account.pageY } });
       if (!result.ok) {
         setStatus({ kind: 'error', text: result.error ?? 'Printing failed' });
         return;

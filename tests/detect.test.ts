@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { detectCheque, estimateSkew, findChequeRegion } from '../src/shared/detect/detectCheque';
 import { readImageDpi } from '../src/shared/detect/dpi';
-import { createRaster, crop, downscale, rotateQuarter, rotateSmall, type Raster } from '../src/shared/detect/imaging';
+import { createRaster, crop, downscale, isBlank, rotateQuarter, rotateSmall, type Raster } from '../src/shared/detect/imaging';
 import { findSegments, joinCollinear } from '../src/shared/detect/segments';
 
 // Synthetic 150 dpi cheque modelled on a UAE layout. 1 mm = 150 / 25.4 px.
@@ -80,6 +80,12 @@ describe('imaging', () => {
     img.data[5] = 0;
     expect([...downscale(img, 2, 'min').data]).toEqual([0, 255, 255, 255]);
     expect(downscale(img, 2, 'avg').data[0]).toBe(191);
+  });
+
+  test('isBlank spots a scan that failed to draw', () => {
+    expect(isBlank(createRaster(100, 100, 4, 0))).toBe(true);
+    expect(isBlank(createRaster(100, 100, 1, 255))).toBe(true);
+    expect(isBlank(drawCheque())).toBe(false);
   });
 
   test('crop copies the requested rectangle', () => {

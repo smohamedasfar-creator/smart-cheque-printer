@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { applyTransform, detectCheque, type DetectionResult } from '../shared/detect/detectCheque';
 import { readImageDpi } from '../shared/detect/dpi';
-import type { Raster } from '../shared/detect/imaging';
+import { isBlank, type Raster } from '../shared/detect/imaging';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -62,7 +62,10 @@ export async function loadUpload(file: File): Promise<LoadedUpload> {
     timer = setTimeout(() => reject(new Error('reading the file took too long. Try again, or save the scan as JPG or PDF from your scanner app.')), LOAD_TIMEOUT_MS);
   });
   try {
-    return await Promise.race([loading, timeout]);
+    const loaded = await Promise.race([loading, timeout]);
+    // A failed draw (often when the computer is low on memory) gives a flat image; never detect a cheque from that.
+    if (isBlank(loaded.image)) throw new Error('the file could not be drawn (it came out blank). Close other programs to free memory and try again, or save the scan as JPG.');
+    return loaded;
   } finally {
     clearTimeout(timer);
   }

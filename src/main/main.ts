@@ -26,7 +26,7 @@ async function openStore(dbPath: string): Promise<Store> {
 
 async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }> {
   const layout = job.layout;
-  const geometry = pageGeometry(layout, job.settings);
+  const geometry = pageGeometry(layout, job.settings, job.placement);
   const html = buildPrintHtml(job.items, geometry, {
     fontFamily: job.settings.fontFamily,
     guides: job.testPrint,

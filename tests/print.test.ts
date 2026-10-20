@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildCalibrationHtml, buildPrintHtml, chequesToCsv, nextChequeNo, pageGeometry, safeFontName } from '../src/shared/print';
+import { buildCalibrationHtml, buildPrintHtml, chequesToCsv, footprint, nextChequeNo, pageGeometry, safeFontName } from '../src/shared/print';
 import { digitDateLayout } from './fixtures';
 import { DEFAULT_SETTINGS, type ChequeRecord, type RenderItem } from '../src/shared/types';
 
@@ -36,6 +36,23 @@ describe('pageGeometry', () => {
     const narrow = { ...layout, chequeWidth: 158, chequeHeight: 80 };
     expect(pageGeometry(narrow, { ...DEFAULT_SETTINGS, feedAlign: 'center', feedEdgeMm: 105 }).originX).toBe(105 - 79);
     expect(pageGeometry(narrow, { ...DEFAULT_SETTINGS, feedAlign: 'left', feedEdgeMm: 3 }).originX).toBe(3);
+  });
+
+  test('a cheque book placed on the page preview prints exactly there', () => {
+    const g = pageGeometry(layout, { ...DEFAULT_SETTINGS, feedRotation: 0 }, { rotation: 270, x: 61.5, y: 2 });
+    expect(g).toMatchObject({ rotation: 270, originX: 61.5, originY: 2, pageWidth: 210, pageHeight: 297 });
+  });
+
+  test('a cheque book with only a feed direction uses the printer calibration for position', () => {
+    const settings = { ...DEFAULT_SETTINGS, feedAlign: 'right' as const, feedEdgeMm: 209.6 };
+    const g = pageGeometry(layout, settings, { rotation: 90, x: null, y: null });
+    expect(g.rotation).toBe(90);
+    expect(g.originX).toBeCloseTo(209.6 - 94);
+  });
+
+  test('footprint swaps width and height for vertical feeding', () => {
+    expect(footprint(layout, 0)).toEqual([204, 94]);
+    expect(footprint(layout, 270)).toEqual([94, 204]);
   });
 
   test('keeps working with an older left-edge calibration', () => {

@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { renderCheque } from '../../shared/chequeRender';
 import { blankLayout } from '../../shared/layoutDefaults';
-import type { Account, ChequeTemplate, NewAccount, PrintSettings } from '../../shared/types';
+import { A4_PAGE, footprint, pageGeometry } from '../../shared/print';
+import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
+import { PagePlacement } from './PagePlacement';
 import { TemplateEditor, type Draft } from './TemplateEditor';
 
 interface Props {
@@ -18,7 +20,14 @@ type Mode =
   | { kind: 'design'; draft: Draft; account: NewAccount & { id?: number }; isNew: boolean }
   | { kind: 'details'; account: NewAccount & { id?: number }; isNew: boolean };
 
-const NEW_ACCOUNT: NewAccount = { name: '', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '', offsetX: 0, offsetY: 0 };
+const NEW_ACCOUNT: NewAccount = { name: '', accountNo: '', templateId: null, currency: 'AED', lastChequeNo: '', offsetX: 0, offsetY: 0, feedRotation: null, pageX: null, pageY: null };
+
+const FEED_OPTIONS: Array<{ value: FeedRotation; title: string; hint: string; icon: string }> = [
+  { value: 0, title: 'Sideways', hint: 'Long edge first, like a normal page turned sideways', icon: '▭' },
+  { value: 270, title: 'Vertical ↺', hint: 'Short edge first, text turned anti-clockwise', icon: '▯↺' },
+  { value: 90, title: 'Vertical ↻', hint: 'Short edge first, text turned clockwise', icon: '▯↻' },
+  { value: 180, title: 'Upside down', hint: 'Long edge first, turned over', icon: '▭⟲' },
+];
 const SAMPLE = { date: '2026-12-31', payee: 'Sample Payee Trading LLC', amountFils: 1_234_550, crossing: 'ac-payee-bearer' as const };
 
 /** One place for everything about a cheque book: its bank details and the layout of its cheque leaf. */
@@ -74,6 +83,8 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
           onSaved={async template => {
             const account = { ...mode.account, templateId: template.id, name: mode.account.name || template.name };
             if (mode.isNew) {
+              // Reload so the details step can show and test-print the design just saved.
+              await onChanged();
               setMode({ kind: 'details', isNew: true, account });
               return;
             }
@@ -193,6 +204,17 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
   const onCheque = { ...settings, offsetX: draft.offsetX, offsetY: draft.offsetY };
   const sample = template ? renderCheque(template.layout, SAMPLE, onCheque, measure) : null;
+  const placement = { rotation: draft.feedRotation, x: draft.pageX, y: draft.pageY };
+  const rotation: FeedRotation = draft.feedRotation ?? settings.feedRotation ?? 0;
+  // Where the leaf prints now: the hand-placed position, or the printer calibration.
+  const at = template ? pageGeometry(template.layout, settings, placement) : null;
+  const tenth = (v: number) => Math.round(v * 10) / 10;
+  const place = (x: number, y: number) => setDraft(d => ({ ...d, pageX: tenth(x), pageY: tenth(y) }));
+  const snapTo = (where: 'left' | 'center' | 'right') => {
+    if (!template || !at) return;
+    const [footW] = footprint(template.layout, rotation);
+    place(where === 'left' ? 0 : where === 'right' ? A4_PAGE.width - footW : (A4_PAGE.width - footW) / 2, at.originY);
+  };
 
   const save = async () => {
     try {
@@ -204,7 +226,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
   const testPrint = async () => {
     if (!template || !sample) return;
-    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: true });
+    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: true, placement });
     setMessage(result.ok ? { kind: 'ok', text: 'Test page sent. Hold it over a real cheque; adjust the fine-tuning below if needed.' } : { kind: 'error', text: result.error ?? 'Print failed' });
   };
 
@@ -218,6 +240,36 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
           <label>Currency<input value={draft.currency} onChange={e => set('currency', e.target.value.toUpperCase().slice(0, 3))} /></label>
         </div>
         <label>Last cheque number used<input value={draft.lastChequeNo} onChange={e => set('lastChequeNo', e.target.value)} placeholder="e.g. 000123 — the next cheque will be 000124" /></label>
+        <h3>How does this cheque go into the printer?</h3>
+        <div className="feed-options">
+          {FEED_OPTIONS.map(o => (
+            <button key={o.value} type="button" className={rotation === o.value ? 'feed-option active' : 'feed-option'} title={o.hint} onClick={() => set('feedRotation', o.value)}>
+              <span className="feed-icon">{o.icon}</span>
+              <span>{o.title}</span>
+            </button>
+          ))}
+        </div>
+        <p className="hint">{FEED_OPTIONS.find(o => o.value === rotation)?.hint}.{draft.feedRotation === null ? ' (Using the default from Settings.)' : ''}</p>
+
+        <h3>Where does it sit on the page?</h3>
+        <p className="hint">The page is shown <b>as the printer sees it</b>: the top is the end that goes in first, and left and right are mirrored compared with standing in front of the tray. Drag the leaf or use the buttons, then do a test print. If the text lands on the wrong side, try the other edge.</p>
+        {at && (
+          <>
+            <div className="actions">
+              <button type="button" onClick={() => snapTo('left')}>⇤ Left edge</button>
+              <button type="button" onClick={() => snapTo('center')}>Centre</button>
+              <button type="button" onClick={() => snapTo('right')}>Right edge ⇥</button>
+            </div>
+            <div className="row">
+              <label>From left (mm)<input type="number" step="0.5" value={tenth(at.originX)} onChange={e => place(Number(e.target.value), at.originY)} /></label>
+              <label>From top (mm)<input type="number" step="0.5" value={tenth(at.originY)} onChange={e => place(at.originX, Number(e.target.value))} /></label>
+            </div>
+            {draft.pageX !== null && (
+              <button type="button" className="link" onClick={() => setDraft(d => ({ ...d, pageX: null, pageY: null }))}>Use the printer calibration from Settings instead</button>
+            )}
+          </>
+        )}
+
         <details className="advanced">
           <summary>Printer fine-tuning for this cheque book (optional)</summary>
           <p className="hint">Only needed if a test print of this cheque book is slightly off after printer calibration.</p>
@@ -233,9 +285,10 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         </div>
         {message && <p className={message.kind === 'ok' ? 'success' : 'error'}>{message.text}</p>}
       </div>
-      {template && sample && (
-        <div className="preview">
-          <ChequeCanvas layout={template.layout} items={sample.items} fontFamily={settings.fontFamily} image={template.image} scale={4} />
+      {template && sample && at && (
+        <div className="preview placement-preview">
+          <PagePlacement layout={template.layout} image={template.image} rotation={rotation} x={at.originX} y={at.originY} onMove={place} />
+          <ChequeCanvas layout={template.layout} items={sample.items} fontFamily={settings.fontFamily} image={template.image} scale={3} />
         </div>
       )}
     </div>
