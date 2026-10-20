@@ -1,23 +1,44 @@
-import type { ChequeLayout, ChequeRecord, PrintSettings, RenderItem } from './types';
+import type { ChequeLayout, ChequeRecord, FeedRotation, PrintSettings, RenderItem } from './types';
 
 const A4 = { width: 210, height: 297 };
 
 export interface PageGeometry {
   pageWidth: number;
   pageHeight: number;
-  /** Position of the cheque's top-left corner on the page. */
+  /** Top-left corner of the paper's footprint on the page (where the calibration ruler readings point). */
   originX: number;
   originY: number;
+  /** Turn applied to the cheque so it matches how it is fed into the printer. */
+  rotation: FeedRotation;
+  chequeWidth: number;
+  chequeHeight: number;
 }
 
 export function pageGeometry(layout: ChequeLayout, settings: PrintSettings): PageGeometry {
   const { chequeWidth, chequeHeight } = layout;
-  if (settings.paper === 'cheque') return { pageWidth: chequeWidth, pageHeight: chequeHeight, originX: 0, originY: 0 };
-
+  const rotation = settings.feedRotation ?? 0;
+  // Fed short edge first, the cheque covers its height across the page and its width down the page.
+  const [footW, footH] = rotation === 90 || rotation === 270 ? [chequeHeight, chequeWidth] : [chequeWidth, chequeHeight];
+  const base = { rotation, chequeWidth, chequeHeight };
+  if (settings.paper === 'cheque') {
+    return { ...base, pageWidth: footW, pageHeight: footH, originX: settings.offsetX, originY: settings.offsetY };
+  }
   const [pageWidth, pageHeight] = settings.paper === 'a4-portrait' ? [A4.width, A4.height] : [A4.height, A4.width];
-  const spare = pageWidth - chequeWidth;
-  const originX = settings.feedAlign === 'left' ? 0 : settings.feedAlign === 'right' ? spare : spare / 2;
-  return { pageWidth, pageHeight, originX, originY: 0 };
+  const spare = pageWidth - footW;
+  const aligned = settings.feedAlign === 'left' ? 0 : settings.feedAlign === 'right' ? spare : spare / 2;
+  return { ...base, pageWidth, pageHeight, originX: aligned + settings.offsetX, originY: settings.offsetY };
+}
+
+/** CSS transform that turns a cheque-shaped box so it lands in its footprint at the origin. */
+function chequeTransform(g: PageGeometry): string {
+  const w = round(g.chequeWidth);
+  const h = round(g.chequeHeight);
+  switch (g.rotation) {
+    case 90: return `translate(${h}mm, 0) rotate(90deg)`;
+    case 180: return `translate(${w}mm, ${h}mm) rotate(180deg)`;
+    case 270: return `translate(0, ${w}mm) rotate(-90deg)`;
+    default: return 'none';
+  }
 }
 
 const escapeHtml = (s: string) =>
@@ -27,28 +48,29 @@ const round = (n: number) => Math.round(n * 100) / 100;
 
 export interface PrintHtmlOptions {
   fontFamily: string;
-  /** Test prints draw the cheque outline (at the same shift as the text) and each field box. */
-  guides?: { chequeWidth: number; chequeHeight: number; offsetX: number; offsetY: number };
+  /** Test prints draw the cheque outline and each field box. */
+  guides?: boolean;
 }
 
 /** Font names are user settings; keep only characters that are safe inside CSS. */
 export const safeFontName = (name: string) => name.replace(/[^\w\s-]/g, '').trim() || 'Arial';
 
+/** Print page: items are in cheque millimetres inside a box placed (and turned) where the paper sits on the page. */
 export function buildPrintHtml(items: RenderItem[], g: PageGeometry, opts: PrintHtmlOptions): string {
-  const ox = g.originX;
-  const oy = g.originY;
+  const w = round(g.chequeWidth);
+  const h = round(g.chequeHeight);
   const body: string[] = [];
   const lines: string[] = [];
 
   for (const item of items) {
     if (item.kind === 'line') {
       lines.push(
-        `<line x1="${round(item.x1 + ox)}" y1="${round(item.y1 + oy)}" x2="${round(item.x2 + ox)}" y2="${round(item.y2 + oy)}" stroke="#000" stroke-width="0.3"/>`,
+        `<line x1="${round(item.x1)}" y1="${round(item.y1)}" x2="${round(item.x2)}" y2="${round(item.y2)}" stroke="#000" stroke-width="0.3"/>`,
       );
       continue;
     }
     const style = [
-      `left:${round(item.x + ox)}mm;top:${round(item.y + oy)}mm`,
+      `left:${round(item.x)}mm;top:${round(item.y)}mm`,
       `width:${round(item.width)}mm;height:${round(item.height)}mm`,
       `font-size:${round(item.fontPt)}pt;text-align:${item.align}`,
       item.rotation ? `transform:rotate(-${item.rotation}deg)` : '',
@@ -57,11 +79,7 @@ export function buildPrintHtml(items: RenderItem[], g: PageGeometry, opts: Print
     body.push(`<div class="f${guide}" style="${style.join(';')}">${escapeHtml(item.text)}</div>`);
   }
 
-  if (opts.guides) {
-    body.unshift(
-      `<div class="guide" style="left:${round(ox + opts.guides.offsetX)}mm;top:${round(oy + opts.guides.offsetY)}mm;width:${opts.guides.chequeWidth}mm;height:${opts.guides.chequeHeight}mm"></div>`,
-    );
-  }
+  if (opts.guides) body.unshift(`<div class="guide" style="left:0;top:0;width:${w}mm;height:${h}mm"></div>`);
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 @page { size: ${round(g.pageWidth)}mm ${round(g.pageHeight)}mm; margin: 0; }
@@ -75,9 +93,12 @@ body { position: relative; width: ${round(g.pageWidth)}mm; height: ${round(g.pag
 .guide { position: absolute; border: 0.2mm dashed #999; box-sizing: border-box; }
 .guide-box { outline: 0.1mm dotted #bbb; }
 svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.cheque { position: absolute; transform-origin: 0 0; }
 </style></head><body>
+<div class="cheque" style="left:${round(g.originX)}mm;top:${round(g.originY)}mm;width:${w}mm;height:${h}mm;transform:${chequeTransform(g)}">
 ${body.join('\n')}
-<svg width="${round(g.pageWidth)}mm" height="${round(g.pageHeight)}mm" viewBox="0 0 ${round(g.pageWidth)} ${round(g.pageHeight)}">${lines.join('')}</svg>
+<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}</svg>
+</div>
 </body></html>`;
 }
 

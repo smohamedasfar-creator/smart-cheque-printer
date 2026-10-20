@@ -78,6 +78,8 @@ export interface ChequeData {
 
 export type DateFormat = 'DD/MM/YYYY' | 'DD-MM-YYYY' | 'DD.MM.YYYY' | 'DD MMM YYYY' | 'DD/MM/YY';
 
+export type FeedRotation = 0 | 90 | 180 | 270;
+
 export type WordsStyle = 'uk' | 'us';
 export type FractionFormat = 'words' | 'numeric';
 
@@ -102,6 +104,8 @@ export interface PrintSettings {
   /** cheque: page is exactly the cheque size. a4-*: cheque is fed into an A4 page at the top edge. */
   paper: 'cheque' | 'a4-portrait' | 'a4-landscape';
   feedAlign: 'left' | 'center' | 'right';
+  /** How the cheque goes into the printer: 0 = long edge first; 90 / 270 = short edge first (text turned clockwise / anti-clockwise); 180 = upside down. */
+  feedRotation: FeedRotation;
   printerName: string;
   /** Set once the user has measured where the printer places the cheque with the ruler page. */
   calibrated: boolean;
@@ -126,6 +130,7 @@ export const DEFAULT_SETTINGS: PrintSettings = {
   // Every printer driver supports A4; many reject a custom cheque-sized page and silently fall back to A4.
   paper: 'a4-portrait',
   feedAlign: 'center',
+  feedRotation: 0,
   printerName: '',
   calibrated: false,
 };

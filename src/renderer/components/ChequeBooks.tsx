@@ -191,8 +191,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
-  const effective = { ...settings, offsetX: settings.offsetX + draft.offsetX, offsetY: settings.offsetY + draft.offsetY };
-  const sample = template ? renderCheque(template.layout, SAMPLE, effective, measure) : null;
+  const onCheque = { ...settings, offsetX: draft.offsetX, offsetY: draft.offsetY };
+  const sample = template ? renderCheque(template.layout, SAMPLE, onCheque, measure) : null;
 
   const save = async () => {
     try {
@@ -204,7 +204,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
   const testPrint = async () => {
     if (!template || !sample) return;
-    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings: effective, testPrint: true });
+    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: true });
     setMessage(result.ok ? { kind: 'ok', text: 'Test page sent. Hold it over a real cheque; adjust the fine-tuning below if needed.' } : { kind: 'error', text: result.error ?? 'Print failed' });
   };
 

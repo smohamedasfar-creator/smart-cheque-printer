@@ -6,22 +6,32 @@ import { DEFAULT_SETTINGS, type ChequeRecord, type RenderItem } from '../src/sha
 const layout = digitDateLayout();
 
 describe('pageGeometry', () => {
+  const box = { rotation: 0, chequeWidth: 204, chequeHeight: 94 };
+
   test('uses an A4 page by default', () => {
-    expect(pageGeometry(layout, DEFAULT_SETTINGS)).toEqual({ pageWidth: 210, pageHeight: 297, originX: 3, originY: 0 });
+    expect(pageGeometry(layout, DEFAULT_SETTINGS)).toEqual({ ...box, pageWidth: 210, pageHeight: 297, originX: 3, originY: 0 });
   });
 
   test('can use a cheque-sized page', () => {
-    expect(pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'cheque' })).toEqual({ pageWidth: 204, pageHeight: 94, originX: 0, originY: 0 });
-  });
-
-  test('centres the cheque on an A4 portrait page', () => {
-    const g = pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'a4-portrait', feedAlign: 'center' });
-    expect(g).toEqual({ pageWidth: 210, pageHeight: 297, originX: 3, originY: 0 });
+    expect(pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'cheque' })).toEqual({ ...box, pageWidth: 204, pageHeight: 94, originX: 0, originY: 0 });
   });
 
   test('aligns the cheque right or left on A4 landscape', () => {
     expect(pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'a4-landscape', feedAlign: 'right' }).originX).toBe(93);
     expect(pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'a4-landscape', feedAlign: 'left' }).originX).toBe(0);
+  });
+
+  test('places the cheque where the calibration readings say', () => {
+    const g = pageGeometry(layout, { ...DEFAULT_SETTINGS, feedAlign: 'left', offsetX: 52, offsetY: 1.5 });
+    expect([g.originX, g.originY]).toEqual([52, 1.5]);
+  });
+
+  test('a cheque fed short edge first covers its height across the page', () => {
+    const g = pageGeometry(layout, { ...DEFAULT_SETTINGS, feedAlign: 'center', feedRotation: 90 });
+    expect(g.rotation).toBe(90);
+    expect(g.originX).toBe((210 - 94) / 2);
+    const cheque = pageGeometry(layout, { ...DEFAULT_SETTINGS, paper: 'cheque', feedRotation: 270 });
+    expect([cheque.pageWidth, cheque.pageHeight]).toEqual([94, 204]);
   });
 });
 
@@ -31,25 +41,32 @@ describe('buildPrintHtml', () => {
     { kind: 'text', role: 'ac-payee', text: 'A/C PAYEE ONLY', x: 3, y: 1, width: 34, height: 26, fontPt: 8, align: 'center', rotation: 35 },
     { kind: 'line', x1: 0, y1: 10, x2: 20, y2: 0 },
   ];
-  const geometry = { pageWidth: 210, pageHeight: 297, originX: 3, originY: 0 };
+  const geometry = { pageWidth: 210, pageHeight: 297, originX: 3, originY: 0, rotation: 0 as const, chequeWidth: 204, chequeHeight: 94 };
 
   test('sets the page size in millimetres', () => {
     expect(buildPrintHtml(items, geometry, { fontFamily: 'Arial' })).toContain('size: 210mm 297mm');
   });
 
-  test('escapes text and positions items relative to the cheque origin', () => {
+  test('places the cheque box at the origin and items inside it in cheque millimetres', () => {
     const html = buildPrintHtml(items, geometry, { fontFamily: 'Arial' });
+    expect(html).toContain('class="cheque" style="left:3mm;top:0mm;width:204mm;height:94mm;transform:none"');
     expect(html).toContain('A &amp; B &lt;Trading&gt;');
-    expect(html).toContain('left:13mm;top:20mm');
+    expect(html).toContain('left:10mm;top:20mm');
     expect(html).toContain('rotate(-35deg)');
-    expect(html).toContain('<line x1="3" y1="10" x2="23" y2="0"');
+    expect(html).toContain('<line x1="0" y1="10" x2="20" y2="0"');
+  });
+
+  test('turns the cheque for each feed direction so it stays in its footprint', () => {
+    const turned = (rotation: 0 | 90 | 180 | 270) => buildPrintHtml(items, { ...geometry, rotation }, { fontFamily: 'Arial' });
+    expect(turned(90)).toContain('transform:translate(94mm, 0) rotate(90deg)');
+    expect(turned(180)).toContain('transform:translate(204mm, 94mm) rotate(180deg)');
+    expect(turned(270)).toContain('transform:translate(0, 204mm) rotate(-90deg)');
   });
 
   test('draws the cheque outline and boxes only for test prints', () => {
     expect(buildPrintHtml(items, geometry, { fontFamily: 'Arial' })).not.toContain('class="guide"');
-    const test = buildPrintHtml(items, geometry, { fontFamily: 'Arial', guides: { chequeWidth: 204, chequeHeight: 94, offsetX: 52, offsetY: 1.5 } });
-    expect(test).toContain('class="guide"');
-    expect(test).toContain('left:55mm;top:1.5mm;width:204mm;height:94mm');
+    const test = buildPrintHtml(items, geometry, { fontFamily: 'Arial', guides: true });
+    expect(test).toContain('class="guide" style="left:0;top:0;width:204mm;height:94mm"');
   });
 });
 
@@ -76,7 +93,7 @@ describe('nextChequeNo', () => {
 
 describe('safety', () => {
   test('font names cannot break out of the print page style', () => {
-    const html = buildPrintHtml([], { pageWidth: 210, pageHeight: 297, originX: 0, originY: 0 }, { fontFamily: 'Arial"</style><script>alert(1)</script>' });
+    const html = buildPrintHtml([], { pageWidth: 210, pageHeight: 297, originX: 0, originY: 0, rotation: 0, chequeWidth: 204, chequeHeight: 94 }, { fontFamily: 'Arial"</style><script>alert(1)</script>' });
     expect(html).not.toContain('<script>');
     expect(html).toContain('font-family: "Arialstylescriptalert1script"');
     expect(safeFontName('  ')).toBe('Arial');

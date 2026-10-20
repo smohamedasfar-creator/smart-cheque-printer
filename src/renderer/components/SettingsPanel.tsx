@@ -202,6 +202,17 @@ export function SettingsPanel({ settings, onSave }: Props) {
         </select>
       </label>
 
+      <label>
+        How does the cheque go into the printer?
+        <select value={draft.feedRotation} onChange={e => set('feedRotation', Number(e.target.value) as PrintSettings['feedRotation'])}>
+          <option value={0}>Long edge first (cheque lies sideways, normal)</option>
+          <option value={90}>Short edge first (vertical) – text turned clockwise</option>
+          <option value={270}>Short edge first (vertical) – text turned anti-clockwise</option>
+          <option value={180}>Long edge first, upside down</option>
+        </select>
+      </label>
+      <p className="hint">For vertical feeding, pick one of the "short edge first" options and do a test print on plain paper. If the text comes out upside down, choose the other one. Then calibrate with the cheque fed the same way.</p>
+
       <PrinterCalibration
         settings={draft}
         onApply={async next => {

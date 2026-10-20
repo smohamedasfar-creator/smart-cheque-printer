@@ -51,12 +51,13 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
 
   const rendered = useMemo(() => {
     if (!account || !template) return null;
-    const effective = { ...settings, offsetX: settings.offsetX + account.offsetX, offsetY: settings.offsetY + account.offsetY };
+    // The cheque book's fine-tuning moves text on the cheque; the printer calibration places the cheque on the page.
+    const onCheque = { ...settings, offsetX: account.offsetX, offsetY: account.offsetY };
     const data = { date, payee: payee || ' ', amountFils: amountFils ?? 0, crossing, wordsBreakAt };
     try {
-      return { effective, preview: renderCheque(template.layout, data, settings, measure), print: renderCheque(template.layout, data, effective, measure) };
+      return { preview: renderCheque(template.layout, data, { ...settings, offsetX: 0, offsetY: 0 }, measure), print: renderCheque(template.layout, data, onCheque, measure) };
     } catch (e) {
-      return { effective, error: String(e) };
+      return { error: String(e) };
     }
   }, [account, template, settings, date, payee, amountFils, crossing, wordsBreakAt, measure]);
 
@@ -90,7 +91,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.chequeApi.print({ items: rendered.print.items, layout: template.layout, settings: rendered.effective, testPrint });
+      const result = await window.chequeApi.print({ items: rendered.print.items, layout: template.layout, settings, testPrint });
       if (!result.ok) {
         setStatus({ kind: 'error', text: result.error ?? 'Printing failed' });
         return;

@@ -15,7 +15,7 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
   never runs past a printed line, and lets you click the word that starts line 2.
 - **Text size** (8 pt and up) and **any installed font**; a long payee name stays on one line and shrinks to fit (never below 8 pt).
 - Crossing options: A/C Payee, Not Negotiable, strike "or bearer", cross only, none.
-- **Printer calibration** with a ruler page (once per printer); optional fine-tuning per cheque book.
+- **Printer calibration** with a ruler page (once per printer); cheques can be fed sideways or vertically (short edge first); optional fine-tuning per cheque book.
 - **Payees** list (add, edit, delete) with autocomplete when writing cheques.
 - **History** with filters (customer name, date range, cheque number, cheque book), status (printed, cleared, void), delete, totals and CSV export.
 - **Backup and restore** of all data; **Help & About** page with a how-to guide.

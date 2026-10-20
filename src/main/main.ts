@@ -29,9 +29,7 @@ async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }>
   const geometry = pageGeometry(layout, job.settings);
   const html = buildPrintHtml(job.items, geometry, {
     fontFamily: job.settings.fontFamily,
-    guides: job.testPrint
-      ? { chequeWidth: layout.chequeWidth, chequeHeight: layout.chequeHeight, offsetX: job.settings.offsetX, offsetY: job.settings.offsetY }
-      : undefined,
+    guides: job.testPrint,
   });
   return printHtml(html, geometry.pageWidth, geometry.pageHeight, job.settings.printerName);
 }
