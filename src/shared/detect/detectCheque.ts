@@ -65,6 +65,9 @@ function longestRun(pass: boolean[], maxGap: number): [number, number] | null {
   return best;
 }
 
+/** A found cheque must span at least this share of the scan's longer side. */
+const MIN_CHEQUE_SHARE = 0.4;
+
 /** Finds the paper inside a scan by its difference from the scanner background. */
 export function findChequeRegion(img: Raster): { rect: Rect; cropped: boolean } {
   const { width: w, height: h, data } = img;
@@ -88,8 +91,11 @@ export function findChequeRegion(img: Raster): { rect: Rect; cropped: boolean } 
   if (!cols) return { rect: { x: 0, y: 0, width: w, height: h }, cropped: true };
 
   const rect = { x: cols[0], y: rows[0], width: cols[1] - cols[0] + 1, height: rows[1] - rows[0] + 1 };
-  const cropped = rect.width > w * 0.92 && rect.height > h * 0.92;
-  return cropped ? { rect: { x: 0, y: 0, width: w, height: h }, cropped } : { rect, cropped };
+  // Even a small cheque on an A4 scan covers about half of its long side. A smaller patch is something printed
+  // on a pale cheque that fills the whole image (e.g. a dark logo), so the upload is already cropped.
+  const tooSmall = Math.max(rect.width, rect.height) < Math.max(w, h) * MIN_CHEQUE_SHARE;
+  const cropped = tooSmall || (rect.width > w * 0.92 && rect.height > h * 0.92);
+  return cropped ? { rect: { x: 0, y: 0, width: w, height: h }, cropped: true } : { rect, cropped };
 }
 
 /** Printed labels are near-black; security watermarks are much lighter. */

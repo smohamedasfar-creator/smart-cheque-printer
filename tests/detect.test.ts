@@ -290,3 +290,16 @@ describe('readImageDpi', () => {
     expect(readImageDpi(new Uint8Array([1, 2, 3, 4]))).toBeNull();
   });
 });
+
+describe('pale cropped cheques', () => {
+  test('a dark logo on a pale, edge-to-edge cheque is not mistaken for the cheque', () => {
+    // 180 x 85 mm at 10 px/mm: pale tint to the edges, a dark logo block and thin printed lines
+    const img = createRaster(1800, 850, 1, 242);
+    const fill = (x: number, y: number, w: number, h: number, v: number) => {
+      for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) img.data[yy * img.width + xx] = v;
+    };
+    fill(60, 50, 240, 100, 40);
+    for (const [x, y, w] of [[140, 320, 1340], [220, 430, 1000], [60, 530, 1160], [1290, 210, 420]]) fill(x, y, w, 3, 50);
+    expect(findChequeRegion(img)).toEqual({ rect: { x: 0, y: 0, width: 1800, height: 850 }, cropped: true });
+  });
+});
