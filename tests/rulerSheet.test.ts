@@ -16,6 +16,7 @@ function sheetWithCheque(): Raster {
       }
   };
   for (const m of [...RULER_SHEET.markers, RULER_SHEET.orientation]) fill(m.x - m.size / 2, m.y - m.size / 2, m.size, m.size, 0);
+  fill(RULER_SHEET.box.x, RULER_SHEET.box.y, RULER_SHEET.box.width, RULER_SHEET.box.height, 140); // the grey box
   fill(60, 70, 80, 158, 190); // the cheque: pale grey paper, 80 wide x 158 tall
   fill(70, 80, 20, 12, 40);   // its logo
   return img;

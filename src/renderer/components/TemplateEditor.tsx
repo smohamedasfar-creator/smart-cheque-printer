@@ -67,7 +67,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
       setSelected(null);
       setWidthInput('');
       // A cheque from the bank library gets that bank's measured writing spaces.
-      const known = result.sizeKnown ? matchBank(result.layout) : null;
+      const known = result.sizeKnown ? matchBank(result.layout, result.found) : null;
       setBank(known ? { bank: known, detected: result.layout } : null);
       const layout = known ? applyBank(known, result.layout) : result.layout;
       setDraft(d => ({ ...d, layout, image: chequeImageDataUrl(loaded, result), name: d.name || (known ? known.name : d.name) }));
@@ -101,7 +101,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
     setError('');
     // With the real size known, a cheque from the bank library can now be recognised.
     const scaled = scaleLayout(draft.layout, width / draft.layout.chequeWidth);
-    const known = matchBank(scaled);
+    const known = matchBank(scaled, detection?.found);
     setBank(known ? { bank: known, detected: scaled } : null);
     setDraft(d => ({ ...d, layout: known ? applyBank(known, scaled) : scaled }));
     setDetection(r => (r ? { ...r, sizeKnown: true, warnings: r.warnings.filter(w => !w.includes('width')) } : r));

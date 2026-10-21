@@ -27,6 +27,16 @@ describe('bank library', () => {
     }
   });
 
+  test('compares only the writing spaces detection really found (a soft photo may find just two)', () => {
+    const fab = BANKS[0].layout;
+    const guessedWrong = { ...fab, words1: { ...fab.words1, y: 50 }, amount: { ...fab.amount, y: 20 } };
+    expect(matchBank(guessedWrong)).toBeNull();
+    expect(matchBank(guessedWrong, ['payee', 'date'])?.id).toBe('fab');
+    // two lines are enough only when the size agrees closely too
+    expect(matchBank({ ...guessedWrong, chequeWidth: fab.chequeWidth + 2 }, ['payee', 'date'])).toBeNull();
+    expect(matchBank(fab, ['payee'])).toBeNull();
+  });
+
   test('does not claim a cheque of another size, or the same size with different writing spaces', () => {
     expect(matchBank(blankLayout(175, 80))).toBeNull();
     expect(matchBank(blankLayout(157.65, 79.93))).toBeNull();

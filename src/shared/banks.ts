@@ -52,20 +52,40 @@ export const BANKS: BankTemplate[] = [
 
 /** A detected size may differ from the bank's by this much (mm) and still be that bank. */
 const SIZE_TOLERANCE_MM = 2.5;
-/** Each writing line must sit this close (mm) to the same line on the bank's cheque. */
-const LINE_TOLERANCE_MM = 2.5;
+/** A detected line must run this close (mm) to one of the bank's printed lines. */
+const LINE_TOLERANCE_MM = 1.5;
 
+/** With only two lines found, the size must agree this closely (mm) as well. */
+const TIGHT_SIZE_MM = 1.5;
+
+type Line = 'payee' | 'words1' | 'words2' | 'amount' | 'date';
+const LINES: Line[] = ['payee', 'words1', 'words2', 'amount', 'date'];
 const dateBox = (L: ChequeLayout) => (L.date.mode === 'line' ? L.date.box : L.date.boxes[0]);
-/** How high each writing space sits: detection finds these reliably, unlike where a line starts. */
-const heights = (L: ChequeLayout) => [L.payee.y, L.words1.y, L.words2.y, L.amount.y, dateBox(L).y];
+/** Where a writing space's printed line runs (its bottom edge): detection finds these lines reliably. */
+const lineOf = (L: ChequeLayout, line: Line) => {
+  const b = line === 'date' ? dateBox(L) : L[line];
+  return b.y + b.height;
+};
 
-/** The bank whose cheque this detected layout is, or null when it matches none. */
-export function matchBank(detected: ChequeLayout): BankTemplate | null {
+/**
+ * The bank whose cheque this detected layout is, or null when it matches none. `found` lists the writing spaces
+ * detection really found (the others are guesses and are not compared); without it every space is compared.
+ * Lines are compared by height only, whatever role detection gave them, because on a faint photo detection may
+ * miss one line and label the rest one row off; the bank's own writing spaces then put every role right.
+ */
+export function matchBank(detected: ChequeLayout, found?: readonly string[]): BankTemplate | null {
+  const compared = found ? LINES.filter(l => found.includes(l)) : LINES;
+  if (compared.length < 2) return null;
   for (const bank of BANKS) {
     const L = bank.layout;
-    if (Math.abs(detected.chequeWidth - L.chequeWidth) > SIZE_TOLERANCE_MM || Math.abs(detected.chequeHeight - L.chequeHeight) > SIZE_TOLERANCE_MM) continue;
-    const mine = heights(detected);
-    if (heights(L).every((y, i) => Math.abs(mine[i] - y) <= LINE_TOLERANCE_MM)) return bank;
+    const dw = Math.abs(detected.chequeWidth - L.chequeWidth);
+    const dh = Math.abs(detected.chequeHeight - L.chequeHeight);
+    if (dw > SIZE_TOLERANCE_MM || dh > SIZE_TOLERANCE_MM) continue;
+    if (compared.length < 3 && (dw > TIGHT_SIZE_MM || dh > TIGHT_SIZE_MM)) continue;
+    const bankLines = LINES.map(l => lineOf(L, l));
+    const matched = compared.filter(l => bankLines.some(y => Math.abs(lineOf(detected, l) - y) <= LINE_TOLERANCE_MM)).length;
+    const needed = compared.length >= 3 ? Math.max(3, compared.length - 1) : compared.length;
+    if (matched >= needed) return bank;
   }
   return null;
 }

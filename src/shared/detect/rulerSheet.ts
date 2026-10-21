@@ -17,14 +17,14 @@ export const RULER_SHEET = {
   ],
   /** A small square beside the top-left one, so a person can see which way up the sheet is. */
   orientation: { x: 35, y: 17, size: 7 },
-  /** Where to lay the cheque. */
+  /** Where to lay the cheque: filled grey, so a white cheque stands out from it. */
   box: { x: 26, y: 34, width: 158, height: 236 },
-  /** The part of the sheet returned after straightening (the box plus a margin). */
-  output: { x: 22, y: 29, width: 166, height: 245 },
+  /** The part of the sheet returned after straightening: just inside the grey box, so grey surrounds the cheque. */
+  output: { x: 28, y: 36, width: 154, height: 232 },
 };
 
-/** Pixels per millimetre of the straightened photo (about 150 DPI). */
-export const RULER_PX_PER_MM = 6;
+/** Pixels per millimetre of the straightened photo (about 200 DPI). */
+export const RULER_PX_PER_MM = 8;
 
 /** The printable ruler sheet: corner squares, a box for the cheque, a 100 mm check line and short instructions. */
 export function buildRulerSheetHtml(): string {
@@ -44,10 +44,10 @@ svg { position: absolute; left: 0; top: 0; }
 </style></head><body>
 <svg width="${S.width}mm" height="${S.height}mm" viewBox="0 0 ${S.width} ${S.height}">
 ${S.markers.map(sq).join('')}${sq(S.orientation)}
-<rect x="${S.box.x}" y="${S.box.y}" width="${S.box.width}" height="${S.box.height}" fill="none" stroke="#999" stroke-width="0.3" stroke-dasharray="2 1.5"/>
+<rect x="${S.box.x}" y="${S.box.y}" width="${S.box.width}" height="${S.box.height}" fill="#8c8c8c"/>
 <text x="105" y="12" font-size="4.2" text-anchor="middle" font-weight="bold">Smart Cheque Printer · ruler sheet</text>
-<text x="105" y="${S.box.y + S.box.height / 2 - 4}" font-size="3.6" text-anchor="middle" fill="#999">Lay the blank cheque inside this box.</text>
-<text x="105" y="${S.box.y + S.box.height / 2 + 2}" font-size="3.6" text-anchor="middle" fill="#999">Take the photo from above with all four black squares in the picture.</text>
+<text x="105" y="23" font-size="3.4" text-anchor="middle">Lay the blank cheque on the grey box, fully inside it.</text>
+<text x="105" y="28.5" font-size="3.4" text-anchor="middle">Take the photo from above with all four black squares in the picture.</text>
 <line x1="55" y1="284" x2="155" y2="284" stroke="#000" stroke-width="0.3"/>${ticks.join('')}
 <text x="105" y="295" font-size="3" text-anchor="middle">This ruler must measure exactly 100 mm. If not, print again at 100% scale (turn off "Fit to page").</text>
 </svg></body></html>`;
