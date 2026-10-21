@@ -7,7 +7,7 @@ import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, 
 import { createMeasure } from '../measure';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { correctionFromCorner } from '../../shared/graph';
-import { adjustPosition, READY_POSITIONS, withReadyPositions } from '../../shared/positions';
+import { adjustPosition, moveFieldShiftIntoPositions, READY_POSITIONS, withReadyPositions } from '../../shared/positions';
 import { ChequeCanvas } from './ChequeCanvas';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
@@ -34,6 +34,23 @@ const FEED_OPTIONS: Array<{ value: FeedRotation; title: string; icon: string }> 
   { value: 270, title: 'Date end first', icon: '▯↺' },
 ];
 const SAMPLE = { date: '2026-12-31', payee: 'Sample Payee Trading LLC', amountFils: 1_234_550, crossing: 'ac-payee-bearer' as const };
+
+/**
+ * The fields of `template` went back onto the cheque lines by `moved`: every cheque book using it keeps printing where it
+ * did, and the same tray's other direction takes the correction as a page shift. Returns how many were changed.
+ */
+async function takeOverFieldShift(template: ChequeTemplate, moved: { x: number; y: number }): Promise<number> {
+  const books = (await window.chequeApi.listAccounts()).filter(a => a.templateId === template.id && a.feedRotation !== null && a.pageX !== null && a.pageY !== null);
+  for (const a of books) {
+    const positions = withReadyPositions(template.layout, a.positions);
+    const idx = activePositionIndex({ ...a, positions });
+    const next = moveFieldShiftIntoPositions(template.layout, positions, idx, moved);
+    // A placement not saved as a position still keeps printing where it did.
+    const active = idx >= 0 ? next[idx] : correctPlacement(template.layout, { rotation: a.feedRotation!, x: a.pageX!, y: a.pageY! }, moved.x, moved.y);
+    await window.chequeApi.saveAccount({ ...a, positions: next, feedRotation: active.rotation, pageX: active.x, pageY: active.y });
+  }
+  return books.length;
+}
 
 /** One place for everything about a cheque book: its bank details and the layout of its cheque leaf. */
 export function ChequeBooks({ accounts, templates, settings, onChanged }: Props) {
@@ -85,7 +102,7 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
           settings={settings}
           saveLabel={mode.isNew ? 'Next: cheque book details →' : 'Save cheque design'}
           onCancel={() => setMode({ kind: 'list' })}
-          onSaved={async template => {
+          onSaved={async (template, fieldsMoved) => {
             const account = { ...mode.account, templateId: template.id, name: mode.account.name || template.name };
             if (mode.isNew) {
               // Reload so the details step can show and test-print the design just saved.
@@ -94,9 +111,15 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
               return;
             }
             if ('id' in mode.account && mode.account.id) await window.chequeApi.saveAccount(account);
+            const moved = fieldsMoved && (Math.abs(fieldsMoved.x) >= 0.1 || Math.abs(fieldsMoved.y) >= 0.1) ? await takeOverFieldShift(template, fieldsMoved) : 0;
             await onChanged();
             setMode({ kind: 'list' });
-            setMessage({ kind: 'ok', text: 'Cheque design saved.' });
+            setMessage({
+              kind: 'ok',
+              text: moved
+                ? `Cheque design saved. The fields are back on the cheque lines and the print moved with them, so cheques print where they did. The other direction of the same tray is corrected too: test print it once to check.`
+                : 'Cheque design saved.',
+            });
           }}
         />
       </section>

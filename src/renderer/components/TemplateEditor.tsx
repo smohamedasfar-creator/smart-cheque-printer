@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
+import { fieldShift } from '../../shared/positions';
 import { applyBank, bankBySize, crossingFor, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
 import { editableFields, moveDate, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
@@ -58,7 +59,8 @@ interface EditorProps {
   initial: Draft;
   settings: PrintSettings;
   onCancel: () => void;
-  onSaved: (template: ChequeTemplate) => Promise<void>;
+  /** `fieldsMoved`: how far the fields went back onto the cheque lines (mm, right/down), for the print positions to take over. */
+  onSaved: (template: ChequeTemplate, fieldsMoved?: { x: number; y: number }) => Promise<void>;
   /** Label of the save button, e.g. "Next: cheque book details". */
   saveLabel?: string;
 }
@@ -148,7 +150,8 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
     }
     try {
       const saved = await window.chequeApi.saveTemplate({ id: draft.id, name: draft.name, layout: draft.layout, image: draft.image });
-      await onSaved(saved);
+      // Fields put back on the lines after being shifted to suit a printer: the print positions take that shift over.
+      await onSaved(saved, libraryApplied ? fieldShift(initial.layout, draft.layout) : undefined);
     } catch (e) {
       setError(String(e));
     }

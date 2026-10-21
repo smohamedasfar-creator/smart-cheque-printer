@@ -24,7 +24,8 @@ import {
 import { blankLayout } from '../src/shared/layoutDefaults';
 import { calibrationPattern, calibrationResult, DOT_MM, locateCheque } from '../src/shared/detect/calibrate';
 import { correctionFromCorner } from '../src/shared/graph';
-import { adjustPosition, READY_POSITIONS, withReadyPositions } from '../src/shared/positions';
+import { adjustPosition, fieldShift, moveFieldShiftIntoPositions, READY_POSITIONS, withReadyPositions } from '../src/shared/positions';
+import { editableFields, updateField } from '../src/shared/layoutFields';
 import { renderCheque } from '../src/shared/chequeRender';
 import { DEFAULT_SETTINGS, type ChequeLayout, type FeedRotation, type TextItem } from '../src/shared/types';
 
@@ -333,6 +334,36 @@ describe('virtual printer: fixing a test print by dragging', () => {
           // The other tray is not touched.
           const other = [0, 1, 2, 3].filter(i => READY_POSITIONS[i].tray !== tray);
           for (const i of other) expect(after[i]).toEqual(positions[i]);
+        }
+      }
+    }
+    expect(left.slice(0, 6)).toEqual([]);
+  });
+
+  test('fields shifted to suit one direction: putting them back on the lines fixes both directions of the tray', () => {
+    const left: string[] = [];
+    for (const [w, h] of SIZES) {
+      const lines = layoutOf(w, h);
+      for (const error of ERRORS) {
+        for (const [tuned, other] of [[1, 0], [0, 1], [3, 2], [2, 3]]) {
+          const positions = withReadyPositions(lines, []);
+          const tray = READY_POSITIONS[tuned].tray;
+          const view = (i: number) => defaultTrayView(lines, tray, TRAY_KINDS[tray].turnFor(READY_POSITIONS[i].leading));
+          // The user printed one direction and moved every field by what they saw (to 0.5 mm), as in the editor.
+          const field = probes(lines)[4];
+          const landed = landsOnCheque(lines, tray, view(tuned), positions[tuned], error, field);
+          const off = { x: Math.round((landed.x - field.x) * 2) / 2, y: Math.round((landed.y - field.y) * 2) / 2 };
+          const shifted = editableFields(lines).reduce((L, f) => updateField(L, f.key, { ...f.box, x: f.box.x - off.x, y: f.box.y - off.y }), lines);
+          // "Put every field on the cheque lines": the shift goes into the print positions.
+          const moved = fieldShift(shifted, lines);
+          expect(moved).toEqual({ x: off.x || 0, y: off.y || 0 });
+          const after = moveFieldShiftIntoPositions(lines, positions, tuned, moved);
+          for (const i of [tuned, other]) {
+            for (const c of probes(lines)) {
+              const now = landsOnCheque(lines, tray, view(i), after[i], error, c);
+              if (!near(now, c, 0.36)) { left.push(`${READY_POSITIONS[i].name} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
+            }
+          }
         }
       }
     }
