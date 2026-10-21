@@ -322,10 +322,13 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     }
   };
 
-  const testPrint = async () => {
+  const testPrint = async (marks: boolean) => {
     if (!template || !sample || !placement) return;
-    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: false, placement });
-    setMessage(result.ok ? { kind: 'ok', text: 'Test sent. Compare it with the cheque, then drag the text in step 3 to where it printed.' } : { kind: 'error', text: result.error ?? 'Print failed' });
+    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: marks, marks, placement });
+    const sent = marks
+      ? 'Alignment test sent. Measure the gaps between the crosshairs with a ruler: if they match the printed numbers, the size is right and only the position needs fixing in step 3.'
+      : 'Test sent. Compare it with the cheque, then drag the text in step 3 to where it printed.';
+    setMessage(result.ok ? { kind: 'ok', text: sent } : { kind: 'error', text: result.error ?? 'Print failed' });
   };
 
   const rotation = placement?.rotation ?? 0;
@@ -395,7 +398,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
           on the cheque picture (right) to where it printed and press <b>Fix position</b>. Print again to check.
         </p>
         <div className="actions">
-          <button type="button" onClick={testPrint} disabled={!template}>Test print</button>
+          <button type="button" onClick={() => testPrint(false)} disabled={!template}>Test print</button>
+          <button type="button" onClick={() => testPrint(true)} disabled={!template} title="Crosshairs at the corners and centre with their distances, on plain paper or a photocopy">Print alignment marks</button>
         </div>
 
         <div className="actions">

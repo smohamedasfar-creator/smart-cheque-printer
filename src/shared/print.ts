@@ -52,6 +52,43 @@ export interface PrintHtmlOptions {
   fontFamily: string;
   /** Test prints draw the cheque outline and each field box. */
   guides?: boolean;
+  /** Alignment test: crosshairs at the corners and centre with their distances, to tell an offset from a scaling error. */
+  marks?: boolean;
+}
+
+/** How far in from the cheque edges the corner marks sit: inside the area every printer can reach. */
+export const MARK_INSET_MM = 8;
+
+/** Crosshairs at the four corners and the centre of the cheque, in cheque millimetres, with the distances between them. */
+export function alignmentMarks(w: number, h: number): { points: Array<{ x: number; y: number; label: string }>; across: number; down: number; svg: string } {
+  const t = (v: number) => Math.round(v * 10) / 10;
+  const i = MARK_INSET_MM;
+  const [right, bottom, cx, cy] = [t(w - i), t(h - i), t(w / 2), t(h / 2)];
+  const points = [
+    { x: i, y: i, label: `${i}, ${i}` },
+    { x: right, y: i, label: `${right}, ${i}` },
+    { x: i, y: bottom, label: `${i}, ${bottom}` },
+    { x: right, y: bottom, label: `${right}, ${bottom}` },
+    { x: cx, y: cy, label: `centre ${cx}, ${cy}` },
+  ];
+  const across = t(right - i);
+  const down = t(bottom - i);
+  const stroke = 'stroke="#000" stroke-width="0.25"';
+  const label = (x: number, y: number, text: string, anchor = 'start', extra = '') =>
+    `<text x="${x}" y="${y}" font-size="2.4" text-anchor="${anchor}" ${extra}>${text}</text>`;
+  const marks = points.map(p => {
+    const right = p.x > w / 2 + 1;
+    return `<g class="mark"><line x1="${p.x - 4}" y1="${p.y}" x2="${p.x + 4}" y2="${p.y}" ${stroke}/><line x1="${p.x}" y1="${p.y - 4}" x2="${p.x}" y2="${p.y + 4}" ${stroke}/><circle cx="${p.x}" cy="${p.y}" r="1.2" fill="none" ${stroke}/>${label(right ? p.x - 1.8 : p.x + 1.8, p.y - 1.8, p.label, right ? 'end' : 'start')}</g>`;
+  });
+  const dash = `${stroke} stroke-dasharray="1 1"`;
+  const dims = [
+    `<line x1="${i + 5}" y1="${i}" x2="${right - 5}" y2="${i}" ${dash}/>`,
+    label(cx, i + 4, `${across} mm between these marks`, 'middle'),
+    `<line x1="${i}" y1="${i + 5}" x2="${i}" y2="${bottom - 5}" ${dash}/>`,
+    label(i + 4, cy + 12, `${down} mm`, 'start'),
+    label(cx, bottom - 2.5, `Alignment test · cheque ${t(w)} × ${t(h)} mm · measure the gaps with a ruler`, 'middle'),
+  ];
+  return { points, across, down, svg: [...marks, ...dims].join('') };
 }
 
 /** Font names are user settings; keep only characters that are safe inside CSS. */
@@ -96,10 +133,15 @@ body { position: relative; width: ${round(g.pageWidth)}mm; height: ${round(g.pag
 .guide-box { outline: 0.1mm dotted #bbb; }
 svg { position: absolute; left: 0; top: 0; overflow: visible; }
 .cheque { position: absolute; transform-origin: 0 0; }
+/* A turned cheque still takes its unturned width in layout. If that ran past the page edge, Chromium would shrink
+   the whole page to fit (a 205 mm cheque fed date end first printed at 79%), so the page box clips everything. */
+.page { position: absolute; left: 0; top: 0; width: ${round(g.pageWidth)}mm; height: ${round(g.pageHeight)}mm; overflow: hidden; }
 </style></head><body>
+<div class="page">
 <div class="cheque" style="left:${round(g.originX)}mm;top:${round(g.originY)}mm;width:${w}mm;height:${h}mm;transform:${leafTransform(g.rotation, g.chequeWidth, g.chequeHeight, 'mm')}">
 ${body.join('\n')}
-<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}</svg>
+<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}${opts.marks ? alignmentMarks(g.chequeWidth, g.chequeHeight).svg : ''}</svg>
+</div>
 </div>
 </body></html>`;
 }

@@ -30,6 +30,7 @@ async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }>
   const html = buildPrintHtml(job.items, geometry, {
     fontFamily: job.settings.fontFamily,
     guides: job.testPrint,
+    marks: job.marks === true,
   });
   return printHtml(html, geometry.pageWidth, geometry.pageHeight, job.settings.printerName);
 }

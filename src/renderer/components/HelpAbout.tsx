@@ -12,7 +12,7 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Show how the cheque goes into your printer',
-    'Cheque Books → Details. Choose the tray (back tray, front drawer or manual feed slot) and which end of the cheque goes in first, then slide the cheque on the tray picture to where it sits, or press a guide button. Press Test print with a photocopy of the cheque loaded the same way. If the text lands in the wrong place, drag it on the cheque picture to where it printed and press Fix position. If it printed upside down, press "Text printed upside down". Save one position for every way you load this cheque book.',
+    'Cheque Books → Details. Choose the tray (back tray, front drawer or manual feed slot) and which end of the cheque goes in first, then load the cheque as the animation shows, with the guide touching it. Press Test print with a photocopy of the cheque loaded the same way. If the text lands in the wrong place, drag it on the cheque picture to where it printed and press Fix position. If it printed upside down, press "Text printed upside down". To check size and position on their own, press Print alignment marks and measure the gaps between the crosshairs with a ruler. Save one position for every way you load this cheque book.',
   ],
   [
     'Write and print',

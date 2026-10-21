@@ -17,6 +17,8 @@ export interface PrintJob {
   layout: ChequeLayout;
   settings: PrintSettings;
   testPrint: boolean;
+  /** Adds crosshairs at the cheque's corners and centre with their distances (alignment test). */
+  marks?: boolean;
   /** The cheque book's own feed direction and page position, when set. */
   placement?: PagePlacement;
 }

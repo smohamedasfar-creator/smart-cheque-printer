@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildCalibrationHtml, buildPrintHtml, chequePointOnPage, correctPlacement, defaultTrayView, flipPlacement, pageToTray, trayToPage, chequesToCsv, footprint, LEADING_EDGE, nextChequeNo, pageGeometry, safeFontName } from '../src/shared/print';
+import { alignmentMarks, buildCalibrationHtml, buildPrintHtml, chequePointOnPage, correctPlacement, defaultTrayView, flipPlacement, pageToTray, trayToPage, chequesToCsv, footprint, LEADING_EDGE, nextChequeNo, pageGeometry, safeFontName } from '../src/shared/print';
 import { digitDateLayout } from './fixtures';
 import { DEFAULT_SETTINGS, type ChequeRecord, type RenderItem } from '../src/shared/types';
 
@@ -201,5 +201,38 @@ describe('print positions without numbers', () => {
 
   test('every direction has a plain-words name', () => {
     for (const r of rotations) expect(LEADING_EDGE[r]).toMatch(/first/);
+  });
+});
+
+describe('alignment marks', () => {
+  const geometry = { pageWidth: 210, pageHeight: 297, originX: 61.4, originY: 0, rotation: 270 as const, chequeWidth: 205.74, chequeHeight: 87.21 };
+
+  test('crosshairs at the four corners (8 mm in) and the centre, labelled in cheque millimetres', () => {
+    const marks = alignmentMarks(205.74, 87.21);
+    expect(marks.points).toEqual([
+      { x: 8, y: 8, label: '8, 8' },
+      { x: 197.7, y: 8, label: '197.7, 8' },
+      { x: 8, y: 79.2, label: '8, 79.2' },
+      { x: 197.7, y: 79.2, label: '197.7, 79.2' },
+      { x: 102.9, y: 43.6, label: 'centre 102.9, 43.6' },
+    ]);
+    expect(marks.across).toBe(189.7);
+    expect(marks.down).toBe(71.2);
+    expect(marks.svg).toContain('189.7 mm');
+    expect(marks.svg).toContain('71.2 mm');
+    expect(marks.svg.match(/class="mark"/g)?.length).toBe(5);
+  });
+
+  test('are printed only when asked for, inside the turned cheque', () => {
+    expect(buildPrintHtml([], geometry, { fontFamily: 'Arial' })).not.toContain('class="mark"');
+    const html = buildPrintHtml([], geometry, { fontFamily: 'Arial', marks: true });
+    expect(html).toContain('class="mark"');
+    expect(html.indexOf('class="mark"')).toBeGreaterThan(html.indexOf('class="cheque"'));
+  });
+
+  test('the page box clips, so a turned cheque never makes the browser shrink the page', () => {
+    const html = buildPrintHtml([], geometry, { fontFamily: 'Arial' });
+    expect(html).toMatch(/\.page \{[^}]*overflow: hidden/);
+    expect(html.indexOf('class="page"')).toBeLessThan(html.indexOf('class="cheque"'));
   });
 });
