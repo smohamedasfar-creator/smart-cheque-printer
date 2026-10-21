@@ -45,6 +45,8 @@ export interface ChequeApi {
   listPrinters(): Promise<Array<{ name: string; isDefault: boolean }>>;
   print(job: PrintJob): Promise<{ ok: boolean; error?: string }>;
   printCalibration(printerName: string): Promise<{ ok: boolean; error?: string }>;
+  /** Prints the A4 ruler sheet to lay a cheque on for a phone photo. */
+  printRulerSheet(printerName: string): Promise<{ ok: boolean; error?: string }>;
   exportCsv(csv: string): Promise<{ saved: boolean; path?: string }>;
   appInfo(): Promise<{ version: string; dataFolder: string }>;
   openLink(link: 'email' | 'whatsapp' | 'call' | 'support' | 'source'): Promise<void>;

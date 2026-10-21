@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js';
 import { APP_LINKS, resolveAppLink, type AppLink } from '../shared/appLinks';
 import { buildCalibrationHtml, buildPrintHtml, pageGeometry } from '../shared/print';
 import { calibrationPattern } from '../shared/detect/calibrate';
+import { buildRulerSheetHtml } from '../shared/detect/rulerSheet';
 import type { PrintJob } from '../preload/api';
 import { createStore, type Store } from './store';
 
@@ -104,6 +105,7 @@ function registerIpc(store: Store, dbPath: string) {
   });
   handle('print', (job: PrintJob) => printJob(job));
   handle('print:calibration', (printerName: string) => printHtml(buildCalibrationHtml(), A4_MM.width, A4_MM.height, String(printerName ?? '')));
+  handle('print:rulerSheet', (printerName: string) => printHtml(buildRulerSheetHtml(), A4_MM.width, A4_MM.height, String(printerName ?? '')));
   handle('export:csv', async (csv: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `cheques-${new Date().toISOString().slice(0, 10)}.csv`,

@@ -268,7 +268,8 @@ describe('virtual printer: fixing a test print by dragging', () => {
     }
   });
 
-  test('scanning one test print finds where the cheque sits in every tray, direction, size and position', () => {
+  // About 1,000 simulated test prints, so this one takes a few seconds.
+  test('scanning one test print finds where the cheque sits in every tray, direction, size and position', { timeout: 30_000 }, () => {
     const left: string[] = [];
     for (const { tray, turn, w, h, s } of cases) {
       if (s === 'odd') continue;

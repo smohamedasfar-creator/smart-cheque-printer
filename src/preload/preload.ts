@@ -23,6 +23,7 @@ const api: ChequeApi = {
   listPrinters: invoke('printers:list') as ChequeApi['listPrinters'],
   print: invoke('print') as ChequeApi['print'],
   printCalibration: invoke('print:calibration') as ChequeApi['printCalibration'],
+  printRulerSheet: invoke('print:rulerSheet') as ChequeApi['printRulerSheet'],
   exportCsv: invoke('export:csv') as ChequeApi['exportCsv'],
   appInfo: invoke('app:info') as ChequeApi['appInfo'],
   openLink: invoke('open:link') as ChequeApi['openLink'],

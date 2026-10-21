@@ -3,6 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { applyTransform, detectCheque, type DetectionResult } from '../shared/detect/detectCheque';
 import { readImageDpi } from '../shared/detect/dpi';
 import { isBlank, type Raster } from '../shared/detect/imaging';
+import { rectifyRulerSheet } from '../shared/detect/rulerSheet';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -13,6 +14,8 @@ const PDF_POINTS_PER_INCH = 72;
 export interface LoadedUpload {
   image: Raster;
   dpi: number | null;
+  /** The photo showed the ruler sheet and was straightened to true size with it. */
+  ruler?: boolean;
 }
 
 function canvasRaster(canvas: HTMLCanvasElement): Raster {
@@ -65,6 +68,11 @@ export async function loadUpload(file: File): Promise<LoadedUpload> {
     const loaded = await Promise.race([loading, timeout]);
     // A failed draw (often when the computer is low on memory) gives a flat image; never detect a cheque from that.
     if (isBlank(loaded.image)) throw new Error('the file could not be drawn (it came out blank). Close other programs to free memory and try again, or save the scan as JPG.');
+    // A photo has no scan resolution: if it shows the ruler sheet, straighten it and take the size from the sheet.
+    if (loaded.dpi === null) {
+      const sheet = rectifyRulerSheet(loaded.image);
+      if (sheet) return { image: sheet.image, dpi: sheet.pxPerMm * 25.4, ruler: true };
+    }
     return loaded;
   } finally {
     clearTimeout(timer);

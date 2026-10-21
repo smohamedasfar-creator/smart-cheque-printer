@@ -136,7 +136,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
             onDrop={e => { e.preventDefault(); onFile(e.dataTransfer.files[0]); }}
           >
             <strong>Drop a scan of a blank cheque here, or click to choose a file</strong>
-            <span>PDF, JPG or PNG. A full A4 scan or a cropped cheque both work. For exact sizes, scan at 300 DPI.</span>
+            <span>PDF, JPG or PNG. A full A4 scan or a cropped cheque both work. For exact sizes, scan at 300 DPI. With a phone, lay the cheque on the <button type="button" className="link" onClick={e => { e.stopPropagation(); window.chequeApi.printRulerSheet(settings.printerName); }}>ruler sheet</button> and take the photo from above.</span>
           </div>
         )}
         {busy && <div className="busy">{busy}</div>}
@@ -145,6 +145,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
         {detection && (
           <div className="detect-summary">
             <span className="chip ok">Size {draft.layout.chequeWidth.toFixed(1)} × {draft.layout.chequeHeight.toFixed(1)} mm{detection.sizeKnown ? '' : ' (estimated)'}</span>
+            {upload?.ruler && <span className="chip ok">✓ Measured with the ruler sheet</span>}
             {detection.croppedUpload ? <span className="chip">Cropped upload</span> : <span className="chip">Found cheque on page</span>}
             {detection.transform.flip && <span className="chip">Turned the right way up</span>}
             {Math.abs(detection.transform.skewDeg) >= 0.1 && <span className="chip">Straightened {Math.abs(detection.transform.skewDeg).toFixed(1)}°</span>}
@@ -154,7 +155,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
         )}
         {detection && !detection.sizeKnown && (
           <div className="width-prompt">
-            <span>This file has no scan resolution. Measure the cheque with a ruler and enter its width:</span>
+            <span>This photo has no size information. For the exact size, <button type="button" className="link" onClick={() => window.chequeApi.printRulerSheet(settings.printerName)}>print the ruler sheet</button>, lay the cheque on it and take the photo again. Or measure the cheque and enter its width:</span>
             <input type="number" value={widthInput} onChange={e => setWidthInput(e.target.value)} placeholder="e.g. 158" />
             <span>mm</span>
             <button className="primary" onClick={applyWidth}>Apply</button>
