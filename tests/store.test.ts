@@ -193,10 +193,11 @@ describe('templates', () => {
 
 describe('print positions', () => {
   test('saves every kind of tray and rejects unknown trays or directions', () => {
-    const pos = { name: 'Manual slot', tray: 'manual' as const, rotation: 0 as const, x: 2, y: 0 };
+    const pos = { name: 'Manual slot', tray: 'manual' as const, rotation: 0 as const, x: 2, y: 0, calibrated: true };
     const saved = store.saveAccount({ ...account, positions: [pos], feedRotation: 0, pageX: 2, pageY: 0 });
     expect(store.listAccounts().find(a => a.id === saved.id)?.positions).toEqual([pos]);
     expect(() => store.saveAccount({ ...account, positions: [{ ...pos, tray: 'roof' as never }] })).toThrow(/not valid/);
+    expect(() => store.saveAccount({ ...account, positions: [{ ...pos, calibrated: 'yes' as never }] })).toThrow(/not valid/);
     expect(() => store.saveAccount({ ...account, positions: [], feedRotation: 45 as never })).toThrow(/feed direction/);
     expect(() => store.saveAccount({ ...account, positions: [], pageX: Number.NaN, pageY: 0 })).toThrow(/not valid/);
   });

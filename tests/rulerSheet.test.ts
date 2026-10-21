@@ -15,7 +15,7 @@ function sheetWithCheque(): Raster {
         img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
       }
   };
-  for (const m of RULER_SHEET.markers) fill(m.x - m.size / 2, m.y - m.size / 2, m.size, m.size, 0);
+  for (const m of [...RULER_SHEET.markers, RULER_SHEET.orientation]) fill(m.x - m.size / 2, m.y - m.size / 2, m.size, m.size, 0);
   fill(60, 70, 80, 158, 190); // the cheque: pale grey paper, 80 wide x 158 tall
   fill(70, 80, 20, 12, 40);   // its logo
   return img;
@@ -71,6 +71,20 @@ describe('ruler sheet', () => {
     const { width, height } = chequeExtent(result!.image, result!.pxPerMm);
     expect(width).toBeCloseTo(80, 0);
     expect(height).toBeCloseTo(158, 0);
+  });
+
+  test('a cheque photo full of dark squares (QR code, logo) is not taken for the sheet', () => {
+    const img = createRaster(1500, 760, 4, 230);
+    const fill = (x: number, y: number, w: number, h: number) => {
+      for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) { const i = (yy * img.width + xx) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = 20; }
+    };
+    // a QR code of solid modules, a square logo and a few square blocks spread over the cheque
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) if ((r * 7 + c * 3) % 4 === 0) fill(1100 + c * 18, 60 + r * 18, 18, 18);
+    fill(60, 50, 120, 120);
+    fill(300, 500, 70, 70);
+    fill(1300, 600, 60, 60);
+    fill(700, 620, 65, 65);
+    expect(rectifyRulerSheet(img)).toBeNull();
   });
 
   test('a photo without the sheet is left alone', () => {

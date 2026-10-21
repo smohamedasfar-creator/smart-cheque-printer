@@ -149,13 +149,25 @@ function findMarkers(gray: Raster): Pt[] | null {
           if (!best || area > best.area) best = { pts: ordered, area };
         }
   if (!best) return null;
-  // The squares must be far apart compared with their size, as on the sheet.
-  const side = Math.sqrt(best.pts[0].count);
-  if (best.area < (side * 8) ** 2) return null;
   // Clockwise order on screen; the sheet's short sides (top and bottom) are the shorter pair of opposite sides.
   const p = best.pts;
-  const shortFirst = dist(p[0], p[1]) + dist(p[2], p[3]) < dist(p[1], p[2]) + dist(p[3], p[0]);
-  const [tl, tr, br, bl] = shortFirst ? [p[0], p[1], p[2], p[3]] : [p[1], p[2], p[3], p[0]];
+  const pairA = (dist(p[0], p[1]) + dist(p[2], p[3])) / 2;
+  const pairB = (dist(p[1], p[2]) + dist(p[3], p[0])) / 2;
+  const [shortSide, longSide] = [Math.min(pairA, pairB), Math.max(pairA, pairB)];
+  const side = Math.sqrt(p.reduce((s, b) => s + b.count, 0) / 4);
+  // It must look like the sheet: squares 14 mm against 176 x 263 mm between them, allowing for perspective.
+  const S = RULER_SHEET;
+  const sheetShort = S.markers[1].x - S.markers[0].x;
+  const sheetLong = S.markers[2].y - S.markers[0].y;
+  const sizeRatio = side / shortSide / (S.markers[0].size / sheetShort);
+  const aspect = longSide / shortSide / (sheetLong / sheetShort);
+  if (sizeRatio < 0.6 || sizeRatio > 1.6 || aspect < 0.75 || aspect > 1.3) return null;
+  const [tl, tr, br, bl] = pairA < pairB ? [p[0], p[1], p[2], p[3]] : [p[1], p[2], p[3], p[0]];
+  // And the small orientation square must sit beside exactly one corner square, where the sheet has it.
+  const small = squareBlobs(gray).filter(b => b.count > side * side * 0.1 && b.count < side * side * 0.5);
+  const gapPx = ((S.orientation.x - S.markers[0].x) / S.markers[0].size) * side;
+  const beside = [tl, tr, br, bl].filter(m => small.some(b => Math.abs(dist(b, m) - gapPx) < gapPx * 0.45));
+  if (beside.length !== 1) return null;
   return [tl, tr, bl, br];
 }
 

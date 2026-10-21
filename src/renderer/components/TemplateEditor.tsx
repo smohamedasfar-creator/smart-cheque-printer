@@ -17,6 +17,9 @@ export interface Draft {
   image: string | null;
 }
 
+/** Millimetres shown to one decimal, as typed. */
+const tenth = (v: number) => Math.round(v * 10) / 10;
+
 const FIELD_NAMES: Record<string, string> = {
   payee: 'payee line', words1: 'first words line', words2: 'second words line',
   amount: 'amount box', date: 'date', bearer: '"or bearer" text',
@@ -96,7 +99,11 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
       return;
     }
     setError('');
-    setDraft(d => ({ ...d, layout: scaleLayout(d.layout, width / d.layout.chequeWidth) }));
+    // With the real size known, a cheque from the bank library can now be recognised.
+    const scaled = scaleLayout(draft.layout, width / draft.layout.chequeWidth);
+    const known = matchBank(scaled);
+    setBank(known ? { bank: known, detected: scaled } : null);
+    setDraft(d => ({ ...d, layout: known ? applyBank(known, scaled) : scaled }));
     setDetection(r => (r ? { ...r, sizeKnown: true, warnings: r.warnings.filter(w => !w.includes('width')) } : r));
   };
 
@@ -210,15 +217,15 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
           {field && (
             <>
               <strong>{field.label}</strong>
-              <label>Top (mm)<input type="number" step="0.1" value={field.box.y} onChange={e => setBox('y', Number(e.target.value))} /></label>
+              <label>Top (mm)<input type="number" step="0.1" value={tenth(field.box.y)} onChange={e => setBox('y', Number(e.target.value))} /></label>
               <div className="row">
-                <label>Line starts at (mm)<input type="number" step="0.1" value={field.box.x} onChange={e => setBox('x', Number(e.target.value))} /></label>
+                <label>Line starts at (mm)<input type="number" step="0.1" value={tenth(field.box.x)} onChange={e => setBox('x', Number(e.target.value))} /></label>
                 <label>Line ends at (mm)<input type="number" step="0.1" value={Math.round((field.box.x + field.box.width) * 10) / 10} onChange={e => setBox('width', Number(e.target.value) - field.box.x)} /></label>
               </div>
               <p className="hint">Text wraps to the next line at "Line ends at". Set it to where the printed line ends on the cheque.</p>
               <div className="row">
-                <label>Width (mm)<input type="number" step="0.1" value={field.box.width} onChange={e => setBox('width', Number(e.target.value))} /></label>
-                <label>Height (mm)<input type="number" step="0.1" value={field.box.height} onChange={e => setBox('height', Number(e.target.value))} /></label>
+                <label>Width (mm)<input type="number" step="0.1" value={tenth(field.box.width)} onChange={e => setBox('width', Number(e.target.value))} /></label>
+                <label>Height (mm)<input type="number" step="0.1" value={tenth(field.box.height)} onChange={e => setBox('height', Number(e.target.value))} /></label>
               </div>
               <p className="hint">Text size and font are set once for all cheques in Settings.</p>
             </>

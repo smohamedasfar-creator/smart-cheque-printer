@@ -18,6 +18,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 app.on('browser-window-created', (_e, win) => {
   win.webContents.on('console-message', event => {
+    // Electron's security notices come from the virtual printer's own test windows and never show in the installed app.
+    if (/Electron Security Warning/.test(event.message)) return;
     if (event.level === 'error' || event.level === 'warning') errors.push(`[console ${event.level}] ${event.message}`);
   });
   win.webContents.on('did-finish-load', () => run(win).catch(async err => { errors.push(String(err.stack || err)); await shot(win, 'failure').catch(() => {}); finish(); }));
@@ -89,7 +91,7 @@ async function addChequeBook(win, file, name, index) {
   const chips = await js(win, "[...document.querySelectorAll('.chip')].map(c => c.textContent)");
   notes.push(`${name}: ${chips.join(' | ')}`);
   if (await js(win, "Boolean(document.querySelector('.width-prompt'))")) {
-    await setField(win, '.width-prompt input', '158');
+    await setField(win, '.width-prompt input', '157.6');
     await click(win, 'Apply');
     notes.push(`${name}: entered width 158 mm`);
   }
@@ -100,8 +102,20 @@ async function addChequeBook(win, file, name, index) {
   await click(win, 'Next: cheque book details →');
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
+  // The simple view: three steps up front, the technical settings closed away.
+  check('details: print test page offered', await js(win, "[...document.querySelectorAll('button')].some(b => b.textContent === 'Print test page')"), true);
+  check('details: advanced settings closed', await js(win, "document.querySelector('details.advanced').open"), false);
+  check('details: not calibrated yet', await js(win, "document.querySelector('.form').textContent.includes('Not calibrated yet')"), true);
+  await wait(6300);
   await shot(win, `${index}b-details`);
-  // Every tray: choose it, load the cheque date end first against the right guide, and check the picture.
+  await click(win, 'Save cheque book');
+  await waitFor(win, "document.querySelector('.template-grid')");
+  await calibrateByScan(win, name, index);
+
+  // Advanced: every tray, load the cheque date end first against the right guide, and check the picture.
+  await openDetails(win, name);
+  await js(win, "(() => { const d = document.querySelector('details.advanced'); d.open = true; d.dispatchEvent(new Event('toggle')); })()");
+  await waitFor(win, "[...document.querySelectorAll('button')].some(b => b.textContent === 'Right side ⇥')");
   for (const [tray, title] of [['manual', 'Manual feed slot'], ['front', 'Front drawer'], ['rear', 'Back tray']]) {
     await js(win, `[...document.querySelectorAll('.feed-option')].find(b => b.textContent.startsWith('${title}')).click()`);
     await js(win, "[...document.querySelectorAll('.feed-option')].find(b => b.textContent.includes('Date end first')).click()");
@@ -134,6 +148,47 @@ async function addChequeBook(win, file, name, index) {
   check(`${name}: saved position`, JSON.stringify(saved && { tray: saved.positions[0]?.tray, rotation: saved.feedRotation, x: saved.pageX, y: saved.pageY }), JSON.stringify({ tray: 'rear', rotation: 270, x: 0, y: 1 }));
 }
 
+async function openDetails(win, name) {
+  await js(win, `[...document.querySelectorAll('.template-card')].find(c => c.textContent.includes(${JSON.stringify(name)})).querySelector('button').click()`);
+  await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
+}
+
+/**
+ * Step 3 of setting up printing, end to end in the real window: a virtual printer prints the test page with the
+ * cheque sitting 17.5 mm away from where the app expects it; its scan goes into "choose the scan"; the app must
+ * find the cheque's real position.
+ */
+async function calibrateByScan(win, name, index) {
+  const { simulateTestScan } = require('./virtual-printer.cjs');
+  const account = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const template = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === account.templateId);
+  const settings = await js(win, 'window.chequeApi.getSettings()');
+  const expected = { rotation: account.feedRotation, x: account.pageX, y: account.pageY };
+  const actual = { rotation: expected.rotation, x: Math.round((expected.x - 17.5) * 10) / 10, y: Math.round((expected.y + 1.2) * 10) / 10 };
+  const png = await simulateTestScan({ layout: template.layout, image: template.image, items: [], settings, expected, actual });
+  fs.writeFileSync(path.join(outDir, `${index}f-test-scan.png`), png);
+  await openDetails(win, name);
+  await js(win, `(() => {
+    const bytes = Uint8Array.from(atob('${png.toString('base64')}'), c => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'test-scan.png', { type: 'image/png' }));
+    const input = document.querySelector('.setup-steps input[type=file]');
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await waitFor(win, "[...document.querySelectorAll('.form .success, .form .error')].some(p => /Calibrated|Could not|does not/.test(p.textContent))", 60000);
+  const said = await js(win, "[...document.querySelectorAll('.form .success, .form .error')].map(p => p.textContent).join(' ')");
+  notes.push(`${name} calibration: ${said}`);
+  check(`${name}: calibrated from the scan`, said.includes('✓ Calibrated'), true);
+  await shot(win, `${index}g-calibrated`);
+  await click(win, 'Save cheque book');
+  await waitFor(win, "document.querySelector('.template-grid')");
+  const saved = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const off = Math.hypot(saved.pageX - actual.x, saved.pageY - actual.y);
+  check(`${name}: print position moved to where the cheque really sat (within 0.5 mm)`, off <= 0.5 && saved.feedRotation === actual.rotation, true);
+  check(`${name}: position marked calibrated`, saved.positions.some(p => p.calibrated === true), true);
+}
+
 let started = false;
 async function run(win) {
   if (started) return;
@@ -152,7 +207,8 @@ async function run(win) {
   await setField(win, 'input[list="payees"]', 'Acme Gulf Contracting LLC');
   await setField(win, 'input[inputmode="decimal"]', '23456.78');
   await shot(win, '5-write-cheque');
-  check('write: saved print position offered', await js(win, "[...document.querySelectorAll('select option')].some(o => o.textContent.includes('Back tray · date end first'))"), true);
+  // With a single print position there is nothing to choose, so Write Cheque does not ask.
+  check('write: no position choice with one position', await js(win, "[...document.querySelectorAll('label')].some(l => l.textContent.startsWith('Print position'))"), false);
   check('write: no page-edge warnings for the saved position', await js(win, "[...document.querySelectorAll('.warning')].map(w => w.textContent).filter(t => /page/.test(t)).join(' | ')"), '');
   // choose the word that starts line 2 of the amount in words
   await js(win, "[...document.querySelectorAll('.word-break .word')][4]?.click()");
@@ -245,5 +301,5 @@ function finish() {
   app.exit(0);
 }
 
-setTimeout(() => { errors.push("timeout"); finish(); }, 240000);
+setTimeout(() => { errors.push("timeout"); finish(); }, 420000);
 require(path.join(__dirname, '..', 'dist', 'main', 'main', 'main.js'));

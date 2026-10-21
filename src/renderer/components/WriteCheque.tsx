@@ -148,10 +148,10 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
 
   return (
     <section className="write">
-      {!settings.calibrated && account.pageX === null && (
+      {template && !account.positions[activePos]?.calibrated && !settings.calibrated && (
         <div className="banner">
-          <span><b>Set up your printer once before printing cheques.</b> A ruler page tells the app where your printer places the cheque.</span>
-          <button onClick={() => onGoTo('settings')}>Calibrate printer</button>
+          <span><b>Set up printing for this cheque book once.</b> Print a test page, scan it, and the app finds where your printer puts the cheque.</span>
+          <button onClick={() => onGoTo('books')}>Set up printing</button>
         </div>
       )}
       <form className="form" onSubmit={e => { e.preventDefault(); if (!problems.length) print(false); }}>
@@ -163,7 +163,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
             ))}
           </select>
         </label>
-        {account.positions.length > 0 && (
+        {account.positions.length > 1 && (
           <label>
             Print position (how the cheque is loaded)
             <select value={activePos} onChange={e => choosePosition(Number(e.target.value))}>

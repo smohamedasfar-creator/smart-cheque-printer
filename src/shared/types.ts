@@ -186,6 +186,8 @@ export interface PrintPosition {
   name: string;
   /** Back tray (paper stands up, printed side facing you), front drawer (lies flat, printed side down) or manual feed slot (lies flat, printed side up). */
   tray?: 'rear' | 'front' | 'manual';
+  /** Set when a scanned test print confirmed where the cheque sits in the printer. */
+  calibrated?: boolean;
   rotation: FeedRotation;
   /** Top-left of the leaf's footprint on the A4 page, in mm. */
   x: number;

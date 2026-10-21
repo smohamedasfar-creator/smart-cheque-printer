@@ -4,19 +4,19 @@ import { APP_LINKS, displayPhone, resolveAppLink } from '../../shared/appLinks';
 const STEPS: Array<[string, string]> = [
   [
     'Add a cheque book',
-    'Cheque Books → Add cheque book. Scan a blank cheque leaf (300 DPI PDF or JPG is best; a full A4 scan or a cropped image both work) and drop it in. The app measures the cheque and finds the date, payee, amount-in-words lines and amount box.',
+    'Cheque Books → Add cheque book. Drop in a scan of a blank cheque leaf (300 DPI PDF or JPG; a full A4 scan or a cropped image both work). With a phone instead, print the ruler sheet, lay the cheque on it and take the photo from above. The app measures the cheque, finds the date, payee, amount-in-words lines and amount box, and recognises FAB and RAKBANK cheques from its bank library.',
   ],
   [
     'Check the layout',
-    'Each field is shown on your cheque with sample text. Drag a box to move it, drag its corner to resize, or use the arrow keys. "Line ends at" decides where text wraps to the next line. Then enter the cheque book name and last cheque number.',
+    'Each field is shown on your cheque with sample text. Drag a box to move it or its corner to resize it. "Line ends at" decides where text wraps to the next line. Then enter the cheque book name and last cheque number.',
   ],
   [
-    'Show how the cheque goes into your printer',
-    'Cheque Books → Details. Choose the tray (back tray, front drawer or manual feed slot) and which end of the cheque goes in first, then load the cheque as the animation shows, with the guide touching it. Press Test print with a photocopy of the cheque loaded the same way. If the text lands in the wrong place, drag it on the cheque picture to where it printed and press Fix position. If it printed upside down, press "Text printed upside down". To check size and position on their own, press Print alignment marks and measure the gaps between the crosshairs with a ruler. Save one position for every way you load this cheque book.',
+    'Set up printing once',
+    'In the cheque book details, load a photocopy of the cheque (cut to size) as the picture shows and press Print test page. Scan the printed cheque and choose the scan. The app finds where your printer put the ink and moves the print to match, whichever tray you use and whichever way the cheque went in.',
   ],
   [
     'Write and print',
-    'Write Cheque → choose the cheque book, enter payee, amount and date. The preview shows exactly where text lands. Click a word under "Amount in words" to choose where line 2 starts. Use "Test print on plain paper" the first time, then Print cheque.',
+    'Write Cheque → choose the cheque book, enter payee, amount and date. The preview shows exactly where text lands. Click a word under "Amount in words" to choose where line 2 starts, then Print cheque.',
   ],
   [
     'Keep track',
@@ -25,9 +25,9 @@ const STEPS: Array<[string, string]> = [
 ];
 
 const TIPS = [
-  'Feed every cheque the same way: same tray, same edge against the guide, same side up.',
-  'If a cheque prints slightly off, open Write Cheque → "Printed in the wrong place? Fix it by dragging" and drag the text to where it printed.',
-  'Text cannot print within about 3 mm of the page edge on most printers. If the app warns about this, move the cheque away from that guide or load it the other way round.',
+  'Load every cheque the same way as the picture shows, with the paper guide just touching it.',
+  'If a cheque prints slightly off later, print the test page again and choose its scan: the app corrects itself.',
+  'If the app says the printer printed the page smaller or bigger, set the printer to 100% (turn off "Fit to page").',
   'Choose the text size and font once in Settings. A long payee name stays on one line and gets smaller (not below 8 pt) so it never runs past its line.',
   'Back up your data regularly (Settings → Your data). The backup file holds your cheque books, payees and history.',
 ];

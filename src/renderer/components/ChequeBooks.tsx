@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderCheque } from '../../shared/chequeRender';
 import { blankLayout } from '../../shared/layoutDefaults';
 import { guessTray } from '../../shared/loading';
 import { defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayKind } from '../../shared/print';
 import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
+import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { ChequeCanvas } from './ChequeCanvas';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
@@ -214,8 +215,8 @@ export function describePosition(p: PrintPosition): string {
   return `${TRAYS.find(t => t.value === (p.tray ?? 'rear'))?.title} · ${LEADING_EDGE[p.rotation]}`;
 }
 
-/** The way most people load a cheque in each tray: date end first in a back tray, top edge first when lying flat. */
-const defaultTurn = (t: TrayKind) => TRAY_KINDS[t].turnFor(t === 'rear' ? 270 : 0);
+/** Cheques go in date end first by default: lengthways they are long enough in the feed direction not to jam. */
+const defaultTurn = (t: TrayKind) => TRAY_KINDS[t].turnFor(270);
 
 function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsProps) {
   const positions0 = account.positions ?? [];
@@ -225,6 +226,12 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const [posName, setPosName] = useState(idx0 >= 0 ? positions0[idx0].name : positions0.length ? '' : 'Back tray');
   const [tray, setTray] = useState<TrayKind>(idx0 >= 0 ? positions0[idx0].tray ?? 'rear' : 'rear');
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [calibrated, setCalibrated] = useState(idx0 >= 0 && positions0[idx0].calibrated === true);
+  const [busy, setBusy] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  /** The position the last test page was printed for: the scan is read against it. */
+  const [testedFor, setTestedFor] = useState<Placement | null>(null);
+  const scanInput = useRef<HTMLInputElement>(null);
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
   const onCheque = { ...settings, offsetX: draft.offsetX, offsetY: draft.offsetY };
@@ -242,6 +249,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
   const chooseTray = (t: TrayKind) => {
     setTray(t);
+    setCalibrated(false);
     // A name the app filled in follows the tray; a name the user typed is kept.
     if (!posName.trim() || TRAYS.some(x => x.title === posName)) setPosName(TRAYS.find(x => x.value === t)?.title ?? '');
     if (layout) setPlacement(trayToPage(layout, t, defaultTrayView(layout, t, defaultTurn(t))));
@@ -271,11 +279,12 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   /** One of the four directions: re-seat the cheque pushed fully in and centred. */
   const chooseDirection = (r: FeedRotation) => {
     if (!layout) return;
+    setCalibrated(false);
     setPlacement(trayToPage(layout, tray, defaultTrayView(layout, tray, TRAY_KINDS[tray].turnFor(r))));
   };
 
   const current = (): PrintPosition | null =>
-    placement ? { name: posName.trim() || `Position ${draft.positions.length + 1}`, tray, rotation: placement.rotation, x: placement.x, y: placement.y } : null;
+    placement ? { name: posName.trim() || `Position ${draft.positions.length + 1}`, tray, rotation: placement.rotation, x: placement.x, y: placement.y, calibrated } : null;
 
   const withCurrent = (mode: 'update' | 'add') => {
     const c = current();
@@ -297,6 +306,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     setActiveIdx(i);
     setPosName(p.name);
     setTray(p.tray ?? 'rear');
+    setCalibrated(p.calibrated === true);
     setPlacement(p);
   };
 
@@ -322,6 +332,40 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     }
   };
 
+  /** Step 2: the test page with the sample text and the calibration dots. */
+  const printTestPage = async () => {
+    if (!template || !sample || !placement) return;
+    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: false, calibrate: true, placement });
+    if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
+    setTestedFor(placement);
+    setMessage({ kind: 'ok', text: 'Test page sent. Scan the printed cheque (300 DPI) and choose the scan in step 3.' });
+  };
+
+  /** Step 3: read the scan of the printed test and move the print position to where the cheque really sits. */
+  const onScan = async (file: File | undefined) => {
+    if (!file || !template) return;
+    const expected = testedFor ?? placement;
+    if (!expected) return;
+    setBusy('Reading the test print…');
+    setMessage(null);
+    try {
+      const upload = await loadUpload(file);
+      const reference = template.image ? await imageRaster(template.image) : undefined;
+      const result = await calibrateAsync(upload, template.layout, expected, reference);
+      if (result.ok && result.placement) {
+        setPlacement(result.placement);
+        setCalibrated(true);
+        setMessage({ kind: 'ok', text: `✓ Calibrated. ${result.message} Press Save cheque book.` });
+      } else {
+        setMessage({ kind: 'error', text: result.message });
+      }
+    } catch (e) {
+      setMessage({ kind: 'error', text: `Could not read the scan: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setBusy('');
+    }
+  };
+
   const testPrint = async (marks: boolean) => {
     if (!template || !sample || !placement) return;
     const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: marks, marks, placement });
@@ -344,69 +388,84 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         </div>
         <label>Last cheque number used<input value={draft.lastChequeNo} onChange={e => set('lastChequeNo', e.target.value)} placeholder="e.g. 000123 — the next cheque will be 000124" /></label>
 
-        <h3>Print positions</h3>
-        <p className="hint">One position for every way this cheque book goes into a printer. You choose the position when printing.</p>
-        {draft.positions.length > 0 && (
-          <div className="positions">
-            {draft.positions.map((p, i) => (
-              <div key={i} className={i === activeIdx ? 'position active' : 'position'}>
-                <div>
-                  <strong>{p.name}</strong>
-                  <span className="hint">{describePosition(p)}</span>
-                </div>
-                <div className="actions">
-                  {i === activeIdx ? <span className="tag">Editing</span> : <button type="button" onClick={() => editPosition(i)}>Edit</button>}
-                  <button type="button" onClick={() => removePosition(i)}>Delete</button>
-                </div>
-              </div>
-            ))}
-            <button type="button" onClick={newPosition}>+ Add another position</button>
-          </div>
-        )}
-        <label>Position name<input value={posName} onChange={e => setPosName(e.target.value)} placeholder="e.g. Back tray · date end first" /></label>
-
-        <h3>1. Which tray?</h3>
-        {printerGuess && (
-          <p className="hint">
-            Usual for <b>{printerGuess.name}</b>: {TRAYS.find(t => t.value === printerGuess.tray)?.title}, because {printerGuess.reason}.
-          </p>
-        )}
-        <div className="feed-options three">
-          {TRAYS.map(t => (
-            <button key={t.value} type="button" className={tray === t.value ? 'feed-option active' : 'feed-option'} onClick={() => chooseTray(t.value)}>
-              <strong>{t.title}</strong>
-              <span className="hint">{t.hint}</span>
-            </button>
-          ))}
-        </div>
-
-        <h3>2. Which end goes in first?</h3>
-        <div className="feed-options">
-          {FEED_OPTIONS.map(o => (
-            <button key={o.value} type="button" className={rotation === o.value ? 'feed-option active' : 'feed-option'} title={LEADING_EDGE[o.value]} onClick={() => chooseDirection(o.value)}>
-              <span className="feed-icon">{o.icon}</span>
-              <span>{o.title}</span>
-            </button>
-          ))}
-        </div>
-        <p className="hint">Then slide the cheque on the tray picture to where it really sits, or line it up with a guide.</p>
-        {onPage.map(w => <p key={w} className="warning">{w}</p>)}
-
-        <h3>3. Test print and fix by dragging</h3>
-        <p className="hint">
-          Load a photocopy of a blank cheque cut to size (or a real cheque) exactly as the picture shows and press <b>Test print</b>. If the text lands in the wrong place, drag the text
-          on the cheque picture (right) to where it printed and press <b>Fix position</b>. Print again to check.
+        <h3>Set up printing</h3>
+        <p className={calibrated ? 'success' : 'hint'}>
+          {calibrated ? '✓ Calibrated: this cheque book prints in place on your printer.' : 'Not calibrated yet. Three steps, once per cheque book:'}
         </p>
-        <div className="actions">
-          <button type="button" onClick={() => testPrint(false)} disabled={!template}>Test print</button>
-          <button type="button" onClick={() => testPrint(true)} disabled={!template} title="Crosshairs at the corners and centre with their distances, on plain paper or a photocopy">Print alignment marks</button>
-        </div>
+        <ol className="setup-steps">
+          <li>Load a photocopy of this cheque (cut to size) or a spoiled cheque into the printer, as the picture shows.</li>
+          <li>
+            <button type="button" className="primary" onClick={printTestPage} disabled={!template || !!busy}>Print test page</button>
+          </li>
+          <li>
+            Scan the printed cheque (300 DPI) and{' '}
+            <button type="button" onClick={() => scanInput.current?.click()} disabled={!template || !!busy}>choose the scan</button>
+            <span className="hint"> The app finds where your printer put the ink and moves the print to match.</span>
+            <input ref={scanInput} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden onChange={e => { onScan(e.target.files?.[0]); e.target.value = ''; }} />
+          </li>
+        </ol>
+        {busy && <div className="busy">{busy}</div>}
+        {message && <p className={message.kind === 'ok' ? 'success' : 'error'}>{message.text}</p>}
+        {onPage.map(w => <p key={w} className="warning">{w}</p>)}
 
         <div className="actions">
           <button className="primary" onClick={save}>Save cheque book</button>
           <button onClick={onCancel}>Cancel</button>
         </div>
-        {message && <p className={message.kind === 'ok' ? 'success' : 'error'}>{message.text}</p>}
+
+        <details className="advanced" onToggle={e => setAdvanced((e.target as HTMLDetailsElement).open)}>
+          <summary>Advanced: tray, direction and manual adjustment</summary>
+          <h3>Print positions</h3>
+          <p className="hint">One position for every way this cheque book goes into a printer. You choose the position when printing.</p>
+          {draft.positions.length > 0 && (
+            <div className="positions">
+              {draft.positions.map((p, i) => (
+                <div key={i} className={i === activeIdx ? 'position active' : 'position'}>
+                  <div>
+                    <strong>{p.name}</strong>
+                    <span className="hint">{describePosition(p)}{p.calibrated ? ' · calibrated' : ''}</span>
+                  </div>
+                  <div className="actions">
+                    {i === activeIdx ? <span className="tag">Editing</span> : <button type="button" onClick={() => editPosition(i)}>Edit</button>}
+                    <button type="button" onClick={() => removePosition(i)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+              <button type="button" onClick={newPosition}>+ Add another position</button>
+            </div>
+          )}
+          <label>Position name<input value={posName} onChange={e => setPosName(e.target.value)} placeholder="e.g. Back tray · date end first" /></label>
+
+          <h3>Which tray?</h3>
+          {printerGuess && (
+            <p className="hint">
+              Usual for <b>{printerGuess.name}</b>: {TRAYS.find(t => t.value === printerGuess.tray)?.title}, because {printerGuess.reason}.
+            </p>
+          )}
+          <div className="feed-options three">
+            {TRAYS.map(t => (
+              <button key={t.value} type="button" className={tray === t.value ? 'feed-option active' : 'feed-option'} onClick={() => chooseTray(t.value)}>
+                <strong>{t.title}</strong>
+                <span className="hint">{t.hint}</span>
+              </button>
+            ))}
+          </div>
+
+          <h3>Which end goes in first?</h3>
+          <div className="feed-options">
+            {FEED_OPTIONS.map(o => (
+              <button key={o.value} type="button" className={rotation === o.value ? 'feed-option active' : 'feed-option'} title={LEADING_EDGE[o.value]} onClick={() => chooseDirection(o.value)}>
+                <span className="feed-icon">{o.icon}</span>
+                <span>{o.title}</span>
+              </button>
+            ))}
+          </div>
+          <p className="hint">Slide the cheque on the tray picture to where it sits, or line it up with a guide. Then drag the text on the cheque picture to where a test printed.</p>
+          <div className="actions">
+            <button type="button" onClick={() => testPrint(false)} disabled={!template}>Test print (text only)</button>
+            <button type="button" onClick={() => testPrint(true)} disabled={!template} title="Crosshairs at the corners and centre with their distances">Print alignment marks</button>
+          </div>
+        </details>
       </div>
       {template && view && (
         <div className="preview placement-preview">
@@ -415,11 +474,12 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
             image={template.image}
             tray={tray}
             view={view}
-            onChange={v => setPlacement(trayToPage(template.layout, tray, v))}
+            interactive={advanced}
+            onChange={v => { setCalibrated(false); setPlacement(trayToPage(template.layout, tray, v)); }}
           />
-          <div className="correction-panel">
-            <h3>3. Drag the text to where it printed</h3>
-            {sample && placement && (
+          {advanced && sample && placement && (
+            <div className="correction-panel">
+              <h3>Drag the text to where it printed</h3>
               <PrintCorrection
                 layout={template.layout}
                 image={template.image}
@@ -431,8 +491,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
                   setMessage({ kind: 'ok', text: `${what} Press Save cheque book to keep it.` });
                 }}
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

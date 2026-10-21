@@ -4,6 +4,9 @@ import { applyTransform, detectCheque, type DetectionResult } from '../shared/de
 import { readImageDpi } from '../shared/detect/dpi';
 import { isBlank, type Raster } from '../shared/detect/imaging';
 import { rectifyRulerSheet } from '../shared/detect/rulerSheet';
+import { calibrateFromScan, type CalibrationResult } from '../shared/detect/calibrate';
+import type { Placement } from '../shared/print';
+import type { ChequeLayout } from '../shared/types';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -101,4 +104,29 @@ export function chequeImageDataUrl(upload: LoadedUpload, result: DetectionResult
   const data = new ImageData(new Uint8ClampedArray(upright.data), upright.width, upright.height);
   canvas.getContext('2d')!.putImageData(data, 0, 0);
   return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+/** The pixels of an image given as a data URL (e.g. the saved blank-cheque picture). */
+export async function imageRaster(dataUrl: string): Promise<Raster> {
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  canvas.getContext('2d')!.drawImage(img, 0, 0);
+  return canvasRaster(canvas);
+}
+
+/** Reads a scan of a printed test page (after letting the browser paint; this takes a few seconds). */
+export function calibrateAsync(upload: LoadedUpload, layout: ChequeLayout, expected: Placement, reference?: Raster): Promise<CalibrationResult> {
+  return new Promise((resolve, reject) =>
+    setTimeout(() => {
+      try {
+        resolve(calibrateFromScan(upload.image, upload.dpi, layout, expected, reference));
+      } catch (err) {
+        reject(err);
+      }
+    }, 30),
+  );
 }
