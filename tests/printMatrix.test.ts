@@ -310,45 +310,43 @@ describe('virtual printer: fixing a test print by dragging', () => {
     expect(left.slice(0, 6)).toEqual([]);
   });
 
-  test('fixing the vertical position with the arrows also fixes the horizontal one of the same tray', () => {
+  test('fixing one position with the arrows fixes every position not set up, in both trays', () => {
     const left: string[] = [];
     for (const [w, h] of SIZES) {
       const layout = layoutOf(w, h);
       for (const error of ERRORS) {
-        for (const [vertical, horizontal] of [[0, 1], [2, 3], [1, 0], [3, 2]]) {
+        for (const vertical of [0, 1, 2, 3]) {
           const positions = withReadyPositions(layout, []);
           const tray = READY_POSITIONS[vertical].tray;
-          const view = (i: number) => defaultTrayView(layout, tray, TRAY_KINDS[tray].turnFor(READY_POSITIONS[i].leading));
+          const view = (i: number) => defaultTrayView(layout, READY_POSITIONS[i].tray, TRAY_KINDS[READY_POSITIONS[i].tray].turnFor(READY_POSITIONS[i].leading));
           // Test print of the first position: the user moves the print by what they see, to the nearest mm.
           const p1 = positions[vertical];
           const field = probes(layout)[4];
           const landed = landsOnCheque(layout, tray, view(vertical), p1, error, field);
           const fixed = correctPlacement(layout, p1, Math.round(landed.x - field.x), Math.round(landed.y - field.y));
           const after = adjustPosition(positions, vertical, fixed);
-          for (const i of [vertical, horizontal]) {
+          // A printer that is off by the same amount on its page in both trays: one adjustment fixes all four.
+          for (const i of [0, 1, 2, 3]) {
             for (const c of probes(layout)) {
-              const now = landsOnCheque(layout, tray, view(i), after[i], error, c);
+              const now = landsOnCheque(layout, READY_POSITIONS[i].tray, view(i), after[i], error, c);
               if (!near(now, c, 0.75)) { left.push(`${READY_POSITIONS[i].name} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
             }
           }
-          // The other tray is not touched.
-          const other = [0, 1, 2, 3].filter(i => READY_POSITIONS[i].tray !== tray);
-          for (const i of other) expect(after[i]).toEqual(positions[i]);
         }
       }
     }
     expect(left.slice(0, 6)).toEqual([]);
   });
 
-  test('fields shifted to suit one direction: putting them back on the lines fixes both directions of the tray', () => {
+  test('fields shifted to suit one position: putting them back on the lines fixes every position of both trays', () => {
     const left: string[] = [];
     for (const [w, h] of SIZES) {
       const lines = layoutOf(w, h);
       for (const error of ERRORS) {
-        for (const [tuned, other] of [[1, 0], [0, 1], [3, 2], [2, 3]]) {
+        for (const tuned of [0, 1, 2, 3]) {
           const positions = withReadyPositions(lines, []);
           const tray = READY_POSITIONS[tuned].tray;
-          const view = (i: number) => defaultTrayView(lines, tray, TRAY_KINDS[tray].turnFor(READY_POSITIONS[i].leading));
+          const view = (i: number) => defaultTrayView(lines, READY_POSITIONS[i].tray, TRAY_KINDS[READY_POSITIONS[i].tray].turnFor(READY_POSITIONS[i].leading));
           // The user printed one direction and moved every field by what they saw (to 0.5 mm), as in the editor.
           const field = probes(lines)[4];
           const landed = landsOnCheque(lines, tray, view(tuned), positions[tuned], error, field);
@@ -358,9 +356,10 @@ describe('virtual printer: fixing a test print by dragging', () => {
           const moved = fieldShift(shifted, lines);
           expect(moved).toEqual({ x: off.x || 0, y: off.y || 0 });
           const after = moveFieldShiftIntoPositions(lines, positions, tuned, moved);
-          for (const i of [tuned, other]) {
+          // The tuned position prints where it did; all the others (both trays, never set up) land in place too.
+          for (const i of [0, 1, 2, 3]) {
             for (const c of probes(lines)) {
-              const now = landsOnCheque(lines, tray, view(i), after[i], error, c);
+              const now = landsOnCheque(lines, READY_POSITIONS[i].tray, view(i), after[i], error, c);
               if (!near(now, c, 0.36)) { left.push(`${READY_POSITIONS[i].name} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
             }
           }

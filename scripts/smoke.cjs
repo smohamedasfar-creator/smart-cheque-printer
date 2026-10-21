@@ -177,13 +177,13 @@ async function moveByArrows(win, name, index) {
   const want = correctionFromCorner(template.layout, { rotation: before.feedRotation, x: before.pageX, y: before.pageY }, { x: -1, y: 2 });
   check(`${name}: saved position moved by the arrows`, JSON.stringify({ r: after.feedRotation, x: after.pageX, y: after.pageY }), JSON.stringify({ r: want.rotation, x: want.x, y: want.y }));
   check(`${name}: position marked set up`, after.positions.some(p => p.calibrated === true), true);
-  // The same tray's other direction follows the move on the page; the other tray stays put.
+  // Every position not set up yet (both trays) follows the move on the page.
   const idx = before.positions.findIndex(p => p.rotation === before.feedRotation && p.x === before.pageX && p.y === before.pageY);
   const dx = after.pageX - before.pageX, dy = after.pageY - before.pageY;
   const r1 = n => Math.round(n * 10) / 10;
-  const expected = before.positions.map((p, j) => j === idx ? { x: after.pageX, y: after.pageY } : (p.tray ?? 'rear') === (before.positions[idx].tray ?? 'rear') && !p.calibrated ? { x: r1(p.x + dx), y: r1(p.y + dy) } : { x: p.x, y: p.y });
+  const expected = before.positions.map((p, j) => j === idx ? { x: after.pageX, y: after.pageY } : !p.calibrated ? { x: r1(p.x + dx), y: r1(p.y + dy) } : { x: p.x, y: p.y });
   check(`${name}: four ready positions saved`, after.positions.length >= 4, true);
-  check(`${name}: other direction of the tray moved too, other tray not`, JSON.stringify(after.positions.map(p => ({ x: p.x, y: p.y }))), JSON.stringify(expected));
+  check(`${name}: positions not set up moved too (both trays)`, JSON.stringify(after.positions.map(p => ({ x: p.x, y: p.y }))), JSON.stringify(expected));
 }
 
 /** The graph path: type the corner reading of a printed graph, Apply, Save, and check the saved print position. */

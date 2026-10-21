@@ -1,7 +1,7 @@
 {
   "name": "smart-cheque-printer",
   "productName": "Smart Cheque Printer",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Print cheques for any bank from a scan of a blank cheque leaf.",
   "main": "dist/main/main/main.js",
   "private": true,

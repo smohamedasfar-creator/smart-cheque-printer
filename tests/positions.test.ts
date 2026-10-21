@@ -27,12 +27,12 @@ describe('ready print positions', () => {
     expect(list[4].name).toBe('Manual slot');
   });
 
-  test('an adjustment carries to the same tray positions not yet adjusted, never to the other tray', () => {
+  test('an adjustment carries to every position not yet set up, in both trays', () => {
     const list = withReadyPositions(layout, []);
     const after = adjustPosition(list, 0, { ...list[0], x: list[0].x + 2, y: list[0].y - 1.5 });
     expect(after[0]).toMatchObject({ x: list[0].x + 2, y: list[0].y - 1.5, calibrated: true });
     expect(after[1]).toMatchObject({ x: Math.round((list[1].x + 2) * 10) / 10, y: Math.round((list[1].y - 1.5) * 10) / 10, calibrated: false });
-    expect(after[2]).toEqual(list[2]);
+    for (const i of [2, 3]) expect(after[i]).toMatchObject({ x: Math.round((list[i].x + 2) * 10) / 10, y: Math.round((list[i].y - 1.5) * 10) / 10, calibrated: false });
     // Once adjusted on its own, a position keeps its own adjustment.
     const again = adjustPosition(adjustPosition(after, 1, { ...after[1], x: after[1].x + 1 }), 0, { ...after[0], y: after[0].y + 4 });
     expect(again[1].y).toBe(after[1].y);

@@ -42,8 +42,9 @@ export function withReadyPositions(layout: ChequeLayout, positions: readonly Pri
 }
 
 /**
- * Saves an adjustment of position `index` and carries it to the positions of the same tray that were never adjusted:
- * a printer that prints a few mm off does so on its page, whichever way the cheque goes in.
+ * Saves an adjustment of position `index` and carries it to every position not yet set up, in either tray: a printer
+ * that prints a few mm off does so on its page, whichever way the cheque goes in. For the other tray it is a first
+ * guess (trays may differ a little); a position adjusted on its own keeps its own correction.
  */
 export function adjustPosition(positions: readonly PrintPosition[], index: number, next: Placement): PrintPosition[] {
   const before = positions[index];
@@ -52,11 +53,10 @@ export function adjustPosition(positions: readonly PrintPosition[], index: numbe
   const shifted = next.rotation === before.rotation;
   const dx = next.x - before.x;
   const dy = next.y - before.y;
-  const tray = before.tray ?? 'rear';
   const tenth = (v: number) => Math.round(v * 10) / 10;
   return positions.map((p, i) => {
     if (i === index) return { ...p, rotation: next.rotation, x: next.x, y: next.y, calibrated: true };
-    if (!shifted || (p.tray ?? 'rear') !== tray || p.calibrated) return p;
+    if (!shifted || p.calibrated) return p;
     return { ...p, x: tenth(p.x + dx), y: tenth(p.y + dy) };
   });
 }
@@ -79,9 +79,9 @@ export function fieldShift(from: ChequeLayout, to: ChequeLayout): { x: number; y
 
 /**
  * The fields were moved by `moved` (usually back onto the cheque's lines after being shifted to make up for a
- * printer). The position the cheque book prints with keeps printing exactly where it did; the same tray's positions
- * not yet set up take that correction as a shift of the page (where a printer's offset really is); every other position
- * keeps printing where it did.
+ * printer). The position the cheque book prints with keeps printing exactly where it did; the positions not yet set up
+ * (both trays) take that correction as a shift of the page (where a printer's offset really is); positions already set
+ * up on their own keep printing where they did.
  */
 export function moveFieldShiftIntoPositions(layout: ChequeLayout, positions: readonly PrintPosition[], activeIdx: number, moved: { x: number; y: number }): PrintPosition[] {
   const keep = (p: Placement) => correctPlacement(layout, p, moved.x, moved.y);

@@ -37,7 +37,7 @@ const SAMPLE = { date: '2026-12-31', payee: 'Sample Payee Trading LLC', amountFi
 
 /**
  * The fields of `template` went back onto the cheque lines by `moved`: every cheque book using it keeps printing where it
- * did, and the same tray's other direction takes the correction as a page shift. Returns how many were changed.
+ * did, and the positions not yet set up take the correction as a page shift. Returns how many were changed.
  */
 async function takeOverFieldShift(template: ChequeTemplate, moved: { x: number; y: number }): Promise<number> {
   const books = (await window.chequeApi.listAccounts()).filter(a => a.templateId === template.id && a.feedRotation !== null && a.pageX !== null && a.pageY !== null);
@@ -117,7 +117,7 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
             setMessage({
               kind: 'ok',
               text: moved
-                ? `Cheque design saved. The fields are back on the cheque lines and the print moved with them, so cheques print where they did. The other direction of the same tray is corrected too: test print it once to check.`
+                ? `Cheque design saved. The fields are back on the cheque lines and the print moved with them, so cheques print where they did. The other positions not set up yet are corrected too: test print each tray once to check.`
                 : 'Cheque design saved.',
             });
           }}
@@ -335,7 +335,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     return { positions, idx: activeIdx };
   };
 
-  /** Moves the position being edited to `next`; the same tray's positions not yet adjusted move with it. */
+  /** Moves the position being edited to `next`; the positions not yet set up (both trays) move with it. */
   const adjustTo = (next: Placement) => {
     const { positions, idx } = commitCurrent();
     if (idx < 0) return;
@@ -517,7 +517,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
               <button type="button" onClick={() => nudge(1, 0)} disabled={!template} title="Move the print 1 mm right">→ Right</button>
               <span className="hint">1 mm each click</span>
             </div>
-            <span className="hint">The other direction of the same tray moves with it, until you set that one up too.</span>
+            <span className="hint">The positions not set up yet (both trays) move with it. A position you set up keeps its own.</span>
           </li>
           <li>When the text sits on the lines, press Save cheque book.</li>
         </ol>
