@@ -249,3 +249,5 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .corner-reading input { width: 96px; }
 .nudge { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .nudge button { min-width: 72px; }
+.feed-options.ready-positions { grid-template-columns: repeat(2, 1fr); margin-bottom: 10px; }
+.feed-options.ready-positions .feed-option { align-items: flex-start; text-align: left; padding: 10px 12px; }

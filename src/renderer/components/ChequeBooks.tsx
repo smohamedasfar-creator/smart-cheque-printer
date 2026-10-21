@@ -7,6 +7,7 @@ import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, 
 import { createMeasure } from '../measure';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { correctionFromCorner } from '../../shared/graph';
+import { adjustPosition, READY_POSITIONS, withReadyPositions } from '../../shared/positions';
 import { ChequeCanvas } from './ChequeCanvas';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
@@ -220,9 +221,13 @@ export function describePosition(p: PrintPosition): string {
 const defaultTurn = (t: TrayKind) => TRAY_KINDS[t].turnFor(270);
 
 function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsProps) {
-  const positions0 = account.positions ?? [];
-  const idx0 = activePositionIndex({ ...account, positions: positions0 });
-  const [draft, setDraft] = useState({ ...account, positions: positions0 });
+  // The four ready positions are always there; a new cheque book starts on the first (back tray, vertical).
+  const positions0 = template ? withReadyPositions(template.layout, account.positions ?? []) : account.positions ?? [];
+  const unplaced = account.pageX === null || account.pageY === null || account.feedRotation === null;
+  const saved0 = activePositionIndex({ ...account, positions: positions0 });
+  const idx0 = saved0 >= 0 ? saved0 : unplaced && positions0.length ? 0 : -1;
+  const start0 = unplaced && idx0 >= 0 ? { feedRotation: positions0[idx0].rotation, pageX: positions0[idx0].x, pageY: positions0[idx0].y } : {};
+  const [draft, setDraft] = useState({ ...account, ...start0, positions: positions0 });
   const [activeIdx, setActiveIdx] = useState<number | null>(idx0 >= 0 ? idx0 : null);
   const [posName, setPosName] = useState(idx0 >= 0 ? positions0[idx0].name : positions0.length ? '' : 'Back tray');
   const [tray, setTray] = useState<TrayKind>(idx0 >= 0 ? positions0[idx0].tray ?? 'rear' : 'rear');
@@ -274,7 +279,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         const guess = guessTray(name);
         if (!alive || !guess) return;
         setPrinterGuess({ name, ...guess });
-        if (positions0.length === 0 && account.pageX === null) chooseTray(guess.tray);
+        if (unplaced && (account.positions ?? []).length === 0 && guess.tray === 'front') selectPosition(READY_POSITIONS.findIndex(r => r.tray === 'front'));
       })
       .catch(() => {
         // no printer list: keep the back tray
@@ -297,6 +302,39 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const current = (): PrintPosition | null =>
     placement ? { name: posName.trim() || `Position ${draft.positions.length + 1}`, tray, rotation: placement.rotation, x: placement.x, y: placement.y, calibrated: calibrated || tested } : null;
 
+  /** The positions with the one being edited written in, and its index. */
+  const commitCurrent = (): { positions: PrintPosition[]; idx: number } => {
+    const c = current();
+    const positions = [...draft.positions];
+    if (!c) return { positions, idx: activeIdx ?? -1 };
+    if (activeIdx === null || activeIdx >= positions.length) return { positions: [...positions, c], idx: positions.length };
+    positions[activeIdx] = c;
+    return { positions, idx: activeIdx };
+  };
+
+  /** Moves the position being edited to `next`; the same tray's positions not yet adjusted move with it. */
+  const adjustTo = (next: Placement) => {
+    const { positions, idx } = commitCurrent();
+    if (idx < 0) return;
+    setActiveIdx(idx);
+    setDraft(d => ({ ...d, positions: adjustPosition(positions, idx, next), feedRotation: next.rotation, pageX: next.x, pageY: next.y }));
+    setCalibrated(true);
+  };
+
+  /** One of the ready (or saved) positions, keeping what was changed on the one before. */
+  const selectPosition = (i: number) => {
+    const { positions } = commitCurrent();
+    const p = positions[i];
+    if (!p) return;
+    setDraft(d => ({ ...d, positions, feedRotation: p.rotation, pageX: p.x, pageY: p.y }));
+    setActiveIdx(i);
+    setPosName(p.name);
+    setTray(p.tray ?? 'rear');
+    setCalibrated(p.calibrated === true);
+    setMoved({ x: 0, y: 0 });
+    setTested(false);
+  };
+
   const withCurrent = (mode: 'update' | 'add') => {
     const c = current();
     if (!c) return draft;
@@ -312,16 +350,6 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     return { ...draft, feedRotation: c.rotation, pageX: c.x, pageY: c.y, positions };
   };
 
-  const editPosition = (i: number) => {
-    const p = draft.positions[i];
-    setActiveIdx(i);
-    setPosName(p.name);
-    setTray(p.tray ?? 'rear');
-    setCalibrated(p.calibrated === true);
-    setMoved({ x: 0, y: 0 });
-    setTested(false);
-    setPlacement(p);
-  };
 
   const removePosition = (i: number) => {
     setDraft(d => ({ ...d, positions: d.positions.filter((_, j) => j !== i) }));
@@ -365,8 +393,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     }
     const base = testedFor ?? placement;
     if (!base) return;
-    setPlacement(correctionFromCorner(template.layout, base, { x, y }));
-    setCalibrated(true);
+    adjustTo(correctionFromCorner(template.layout, base, { x, y }));
     setTestedFor(null);
     const moves = [x ? `${Math.abs(x)} mm ${x > 0 ? 'right' : 'left'}` : '', y ? `${Math.abs(y)} mm ${y > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(' and ');
     setMessage({ kind: 'ok', text: `✓ Set up. ${moves ? `The print moves ${moves} on the cheque.` : 'The print was already in place.'} Press Save cheque book, then Test print to check.` });
@@ -376,8 +403,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const nudge = (right: number, up: number) => {
     if (!layout || !placement) return;
     // correctPlacement takes where the print landed minus where it belongs: to move it right, it landed left.
-    setPlacement(correctPlacement(layout, placement, -right, up));
-    setCalibrated(true);
+    adjustTo(correctPlacement(layout, placement, -right, up));
     const next = { x: Math.round((moved.x + right) * 10) / 10, y: Math.round((moved.y + up) * 10) / 10 };
     setMoved(next);
     const parts = [next.y ? `${Math.abs(next.y)} mm ${next.y > 0 ? 'up' : 'down'}` : '', next.x ? `${Math.abs(next.x)} mm ${next.x > 0 ? 'right' : 'left'}` : ''].filter(Boolean);
@@ -405,8 +431,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
       const reference = template.image ? await imageRaster(template.image) : undefined;
       const result = await calibrateAsync(upload, template.layout, expected, reference);
       if (result.ok && result.placement) {
-        setPlacement(result.placement);
-        setCalibrated(true);
+        adjustTo(result.placement);
         setMessage({ kind: 'ok', text: `✓ Calibrated. ${result.message} Press Save cheque book.` });
       } else {
         setMessage({ kind: 'error', text: result.message });
@@ -445,6 +470,16 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         <p className={calibrated ? 'success' : 'hint'}>
           {calibrated ? '✓ Set up: this cheque book prints in place on your printer.' : 'Not set up yet. Once per cheque book:'}
         </p>
+        <p className="hint">How will you load the cheque? All four are ready; set up the ones you use.</p>
+        <div className="feed-options ready-positions">
+          {READY_POSITIONS.map((r, i) => (
+            <button key={r.name} type="button" className={i === activeIdx ? 'feed-option active' : 'feed-option'} onClick={() => selectPosition(i)}>
+              <strong>{r.tray === 'rear' ? 'Back tray' : 'Front tray'}</strong>
+              <span>{r.leading === 270 ? 'Vertical · date end first' : 'Horizontal · top edge first'}</span>
+              {(i === activeIdx ? calibrated : draft.positions[i]?.calibrated) && <span className="hint">✓ set up</span>}
+            </button>
+          ))}
+        </div>
         <ol className="setup-steps">
           <li>Load a photocopy of this cheque (or plain paper cut to its size) as the picture shows.</li>
           <li>
@@ -459,6 +494,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
               <button type="button" onClick={() => nudge(1, 0)} disabled={!template} title="Move the print 1 mm right">→ Right</button>
               <span className="hint">1 mm each click</span>
             </div>
+            <span className="hint">The other direction of the same tray moves with it, until you set that one up too.</span>
           </li>
           <li>When the text sits on the lines, press Save cheque book.</li>
         </ol>
@@ -502,8 +538,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
                     <span className="hint">{describePosition(p)}{p.calibrated ? ' · calibrated' : ''}</span>
                   </div>
                   <div className="actions">
-                    {i === activeIdx ? <span className="tag">Editing</span> : <button type="button" onClick={() => editPosition(i)}>Edit</button>}
-                    <button type="button" onClick={() => removePosition(i)}>Delete</button>
+                    {i === activeIdx ? <span className="tag">Editing</span> : <button type="button" onClick={() => selectPosition(i)}>Edit</button>}
+                    {i >= READY_POSITIONS.length && <button type="button" onClick={() => removePosition(i)}>Delete</button>}
                   </div>
                 </div>
               ))}

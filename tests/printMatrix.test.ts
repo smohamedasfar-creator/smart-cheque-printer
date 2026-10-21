@@ -24,6 +24,7 @@ import {
 import { blankLayout } from '../src/shared/layoutDefaults';
 import { calibrationPattern, calibrationResult, DOT_MM, locateCheque } from '../src/shared/detect/calibrate';
 import { correctionFromCorner } from '../src/shared/graph';
+import { adjustPosition, READY_POSITIONS, withReadyPositions } from '../src/shared/positions';
 import { renderCheque } from '../src/shared/chequeRender';
 import { DEFAULT_SETTINGS, type ChequeLayout, type FeedRotation, type TextItem } from '../src/shared/types';
 
@@ -302,6 +303,36 @@ describe('virtual printer: fixing a test print by dragging', () => {
         for (const c of probes(layout)) {
           const now = landsOnCheque(layout, tray, actual, fix.placement, error, c);
           if (!near(now, c, 0.15)) { left.push(`${name}: still ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
+        }
+      }
+    }
+    expect(left.slice(0, 6)).toEqual([]);
+  });
+
+  test('fixing the vertical position with the arrows also fixes the horizontal one of the same tray', () => {
+    const left: string[] = [];
+    for (const [w, h] of SIZES) {
+      const layout = layoutOf(w, h);
+      for (const error of ERRORS) {
+        for (const [vertical, horizontal] of [[0, 1], [2, 3], [1, 0], [3, 2]]) {
+          const positions = withReadyPositions(layout, []);
+          const tray = READY_POSITIONS[vertical].tray;
+          const view = (i: number) => defaultTrayView(layout, tray, TRAY_KINDS[tray].turnFor(READY_POSITIONS[i].leading));
+          // Test print of the first position: the user moves the print by what they see, to the nearest mm.
+          const p1 = positions[vertical];
+          const field = probes(layout)[4];
+          const landed = landsOnCheque(layout, tray, view(vertical), p1, error, field);
+          const fixed = correctPlacement(layout, p1, Math.round(landed.x - field.x), Math.round(landed.y - field.y));
+          const after = adjustPosition(positions, vertical, fixed);
+          for (const i of [vertical, horizontal]) {
+            for (const c of probes(layout)) {
+              const now = landsOnCheque(layout, tray, view(i), after[i], error, c);
+              if (!near(now, c, 0.75)) { left.push(`${READY_POSITIONS[i].name} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
+            }
+          }
+          // The other tray is not touched.
+          const other = [0, 1, 2, 3].filter(i => READY_POSITIONS[i].tray !== tray);
+          for (const i of other) expect(after[i]).toEqual(positions[i]);
         }
       }
     }

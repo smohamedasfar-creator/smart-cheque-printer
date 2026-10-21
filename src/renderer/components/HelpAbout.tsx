@@ -12,7 +12,7 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Set up printing once',
-    'In the cheque book details, load a photocopy of the cheque as the picture shows and press Test print. If the text is not on the cheque lines, move the whole print with the Up, Down, Left and Right buttons (1 mm each) and test again. When it sits on the lines, press Save cheque book. (For half-millimetre accuracy, Advanced has a printed graph.)'
+    'In the cheque book details, pick how you load the cheque: back or front tray, vertical (date end first) or horizontal (top edge first). All four are ready for every cheque book. Load a photocopy of the cheque as the picture shows and press Test print. If the text is not on the cheque lines, move the whole print with the Up, Down, Left and Right buttons (1 mm each) and test again. When it sits on the lines, press Save cheque book. (For half-millimetre accuracy, Advanced has a printed graph.)'
   ],
   [
     'Write and print',

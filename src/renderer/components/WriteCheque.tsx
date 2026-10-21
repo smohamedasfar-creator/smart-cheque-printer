@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatAmount, parseAmountToFils } from '../../shared/amountInWords';
 import { crossingFor } from '../../shared/banks';
 import { renderCheque, splitIntoWords } from '../../shared/chequeRender';
+import { adjustPosition, READY_POSITIONS, withReadyPositions } from '../../shared/positions';
 import { LEADING_EDGE, nextChequeNo, pageGeometry, pageToTray, printProblems, type Placement } from '../../shared/print';
 import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
@@ -39,23 +40,27 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
 
   const account = accounts.find(a => a.id === accountId) ?? accounts[0];
   const template = templates.find(t => t.id === account?.templateId);
-  const activePos = account ? activePositionIndex(account) : -1;
+  // Every cheque book can print from the four ready positions, whatever it saved so far.
+  const positions = account && template ? withReadyPositions(template.layout, account.positions) : account?.positions ?? [];
+  const savedPlacement = account && account.feedRotation !== null && account.pageX !== null && account.pageY !== null ? { rotation: account.feedRotation, x: account.pageX, y: account.pageY } : null;
+  const activePos = account ? (savedPlacement ? activePositionIndex({ ...account, positions }) : positions.length ? 0 : -1) : -1;
   // The preview shrinks to fit its column, so wide cheques are never cut off.
   const fit = useFitScale(template?.layout.chequeWidth ?? 200, 5);
 
   /** Makes a saved position the one this cheque book prints with (remembered for next time). */
   const choosePosition = async (i: number) => {
-    const p = account?.positions[i];
+    const p = positions[i];
     if (!account || !p) return;
-    await window.chequeApi.saveAccount({ ...account, feedRotation: p.rotation, pageX: p.x, pageY: p.y });
+    await window.chequeApi.saveAccount({ ...account, positions, feedRotation: p.rotation, pageX: p.x, pageY: p.y });
     onPrinted();
   };
 
   /** Saves a drag correction to this cheque book and to the print position it is using. */
   const applyCorrection = async (next: Placement, what: string) => {
     if (!account) return;
-    const positions = account.positions.map((p, i) => (i === activePos ? { ...p, rotation: next.rotation, x: next.x, y: next.y } : p));
-    await window.chequeApi.saveAccount({ ...account, positions, feedRotation: next.rotation, pageX: next.x, pageY: next.y });
+    // The same tray's other direction moves too, until it is adjusted on its own.
+    const adjusted = activePos >= 0 ? adjustPosition(positions, activePos, next) : positions;
+    await window.chequeApi.saveAccount({ ...account, positions: adjusted, feedRotation: next.rotation, pageX: next.x, pageY: next.y });
     setStatus({ kind: 'ok', text: `${what} Saved.` });
     onPrinted();
   };
@@ -114,7 +119,8 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     rendered && 'error' in rendered && rendered.error,
   ].filter(Boolean) as string[];
 
-  const placement = { rotation: account.feedRotation, x: account.pageX, y: account.pageY };
+  const ready = positions[activePos];
+  const placement = savedPlacement ?? (ready ? { rotation: ready.rotation, x: ready.x, y: ready.y } : { rotation: account.feedRotation, x: account.pageX, y: account.pageY });
   const print = async (testPrint: boolean) => {
     if (!template || !rendered || !('print' in rendered) || !rendered.print) return;
     setBusy(true);
@@ -152,9 +158,9 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
 
   return (
     <section className="write">
-      {template && !account.positions[activePos]?.calibrated && !settings.calibrated && (
+      {template && !positions[activePos]?.calibrated && !settings.calibrated && (
         <div className="banner">
-          <span><b>Set up printing for this cheque book once.</b> Print a test page, scan it, and the app finds where your printer puts the cheque.</span>
+          <span><b>Set up printing for this cheque book once.</b> Test print on a photocopy and move the print with the arrows if the text is off the lines.</span>
           <button onClick={() => onGoTo('books')}>Set up printing</button>
         </div>
       )}
@@ -167,13 +173,13 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
             ))}
           </select>
         </label>
-        {account.positions.length > 1 && (
+        {positions.length > 1 && (
           <label>
             Print position (how the cheque is loaded)
             <select value={activePos} onChange={e => choosePosition(Number(e.target.value))}>
               {activePos < 0 && <option value={-1}>Current setting · {LEADING_EDGE[account.feedRotation ?? settings.feedRotation ?? 0]}</option>}
-              {account.positions.map((p, i) => (
-                <option key={i} value={i}>{p.name} · {LEADING_EDGE[p.rotation]}</option>
+              {positions.map((p, i) => (
+                <option key={i} value={i}>{i < READY_POSITIONS.length ? p.name : `${p.name} · ${LEADING_EDGE[p.rotation]}`}</option>
               ))}
             </select>
           </label>
@@ -233,20 +239,20 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
           <label className="check"><input type="checkbox" checked={showLeaf} onChange={e => setShowLeaf(e.target.checked)} /> Show the cheque image (it is never printed)</label>
         )}
         <p className="hint">The preview shows where text lands on the cheque.</p>
-        {template && account.feedRotation !== null && account.pageX !== null && account.pageY !== null && (
+        {template && placement.rotation !== null && placement.x !== null && placement.y !== null && (
           <details className="advanced loading-guide" open>
             <summary>How to load this cheque</summary>
             <TrayPicture
               layout={template.layout}
               image={template.image}
-              tray={account.positions[activePos]?.tray ?? 'rear'}
-              view={pageToTray(template.layout, account.positions[activePos]?.tray ?? 'rear', { rotation: account.feedRotation, x: account.pageX, y: account.pageY })}
+              tray={positions[activePos]?.tray ?? 'rear'}
+              view={pageToTray(template.layout, positions[activePos]?.tray ?? 'rear', { rotation: placement.rotation, x: placement.x, y: placement.y })}
               interactive={false}
               scale={0.9}
             />
           </details>
         )}
-        {template && rendered && 'print' in rendered && rendered.print && account.feedRotation !== null && account.pageX !== null && account.pageY !== null && (
+        {template && rendered && 'print' in rendered && rendered.print && placement.rotation !== null && placement.x !== null && placement.y !== null && (
           <details className="advanced">
             <summary>Printed in the wrong place? Fix it by dragging</summary>
             <p className="hint">Drag the text to where it printed on your cheque (or test page), then press Fix position. The next print moves it back.</p>
@@ -255,7 +261,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
               image={template.image}
               items={rendered.print.items}
               fontFamily={settings.fontFamily}
-              placement={{ rotation: account.feedRotation, x: account.pageX, y: account.pageY }}
+              placement={{ rotation: placement.rotation, x: placement.x, y: placement.y }}
               onApply={applyCorrection}
               scale={2.6}
             />

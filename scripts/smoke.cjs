@@ -104,6 +104,8 @@ async function addChequeBook(win, file, name, index) {
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   // The simple view: three steps up front, the technical settings closed away.
   check('details: test print is the first step', await js(win, "document.querySelector('.setup-steps button')?.textContent"), 'Test print');
+  check('details: four ready positions offered', await js(win, "[...document.querySelectorAll('.ready-positions .feed-option')].map(b => b.querySelector('strong').textContent + ' ' + b.querySelector('span').textContent).join(' | ')"), 'Back tray Vertical · date end first | Back tray Horizontal · top edge first | Front tray Vertical · date end first | Front tray Horizontal · top edge first');
+  check('details: back tray vertical chosen for a new cheque book', await js(win, "document.querySelector('.ready-positions .feed-option.active')?.textContent.startsWith('Back trayVertical')"), true);
   check('details: four arrows move the print', await js(win, "document.querySelectorAll('.setup-steps .nudge button').length"), 4);
   check('details: print graph kept under Advanced', await js(win, "[...document.querySelectorAll('details.advanced button')].some(b => b.textContent === 'Print graph')"), true);
   check('details: advanced settings closed', await js(win, "document.querySelector('details.advanced').open"), false);
@@ -121,13 +123,13 @@ async function addChequeBook(win, file, name, index) {
   await js(win, "(() => { const d = document.querySelector('details.advanced'); d.open = true; d.dispatchEvent(new Event('toggle')); })()");
   await waitFor(win, "[...document.querySelectorAll('button')].some(b => b.textContent === 'Right side ⇥')");
   for (const [tray, title] of [['manual', 'Manual feed slot'], ['front', 'Front drawer'], ['rear', 'Back tray']]) {
-    await js(win, `[...document.querySelectorAll('.feed-option')].find(b => b.textContent.startsWith('${title}')).click()`);
-    await js(win, "[...document.querySelectorAll('.feed-option')].find(b => b.textContent.includes('Date end first')).click()");
+    await js(win, `[...document.querySelectorAll('details.advanced .feed-option')].find(b => b.textContent.startsWith('${title}')).click()`);
+    await js(win, "[...document.querySelectorAll('details.advanced .feed-option')].find(b => b.textContent.includes('Date end first')).click()");
     await click(win, 'Right side ⇥');
     await wait(150);
     check(`${tray}: tray picture shown`, await js(win, `Boolean(document.querySelector('.tray-${tray}'))`), true);
     check(`${tray}: cheque against the right side`, await js(win, "(() => { const s = document.querySelector('.tray-sheet').getBoundingClientRect(); const c = document.querySelector('.tray-cheque').getBoundingClientRect(); return Math.abs(c.right - s.right) < 2; })()"), true);
-    check(`${tray}: date end first selected`, await js(win, "document.querySelector('.feed-options:not(.three) .feed-option.active')?.textContent.includes('Date end first')"), true);
+    check(`${tray}: date end first selected`, await js(win, "document.querySelector('details.advanced .feed-options:not(.three) .feed-option.active')?.textContent.includes('Date end first')"), true);
     // Against the right side, one guide closes from the left; the steps say how to load it.
     check(`${tray}: one guide closes from the left`, await js(win, "document.querySelectorAll('.tray-guide').length"), 1);
     check(`${tray}: loading steps mention the guide`, await js(win, "[...document.querySelectorAll('.tray-steps li')].some(li => /guide/i.test(li.textContent))"), true);
@@ -175,6 +177,13 @@ async function moveByArrows(win, name, index) {
   const want = correctionFromCorner(template.layout, { rotation: before.feedRotation, x: before.pageX, y: before.pageY }, { x: -1, y: 2 });
   check(`${name}: saved position moved by the arrows`, JSON.stringify({ r: after.feedRotation, x: after.pageX, y: after.pageY }), JSON.stringify({ r: want.rotation, x: want.x, y: want.y }));
   check(`${name}: position marked set up`, after.positions.some(p => p.calibrated === true), true);
+  // The same tray's other direction follows the move on the page; the other tray stays put.
+  const idx = before.positions.findIndex(p => p.rotation === before.feedRotation && p.x === before.pageX && p.y === before.pageY);
+  const dx = after.pageX - before.pageX, dy = after.pageY - before.pageY;
+  const r1 = n => Math.round(n * 10) / 10;
+  const expected = before.positions.map((p, j) => j === idx ? { x: after.pageX, y: after.pageY } : (p.tray ?? 'rear') === (before.positions[idx].tray ?? 'rear') && !p.calibrated ? { x: r1(p.x + dx), y: r1(p.y + dy) } : { x: p.x, y: p.y });
+  check(`${name}: four ready positions saved`, after.positions.length >= 4, true);
+  check(`${name}: other direction of the tray moved too, other tray not`, JSON.stringify(after.positions.map(p => ({ x: p.x, y: p.y }))), JSON.stringify(expected));
 }
 
 /** The graph path: type the corner reading of a printed graph, Apply, Save, and check the saved print position. */
@@ -257,8 +266,8 @@ async function run(win) {
   await setField(win, 'input[list="payees"]', 'Acme Gulf Contracting LLC');
   await setField(win, 'input[inputmode="decimal"]', '23456.78');
   await shot(win, '5-write-cheque');
-  // With a single print position there is nothing to choose, so Write Cheque does not ask.
-  check('write: no position choice with one position', await js(win, "[...document.querySelectorAll('label')].some(l => l.textContent.startsWith('Print position'))"), false);
+  // The four ready positions are always offered when printing.
+  check('write: ready positions offered', await js(win, "[...document.querySelectorAll('label')].find(l => l.textContent.startsWith('Print position'))?.querySelectorAll('option').length >= 4"), true);
   check('write: no page-edge warnings for the saved position', await js(win, "[...document.querySelectorAll('.warning')].map(w => w.textContent).filter(t => /page/.test(t)).join(' | ')"), '');
   // choose the word that starts line 2 of the amount in words
   await js(win, "[...document.querySelectorAll('.word-break .word')][4]?.click()");
