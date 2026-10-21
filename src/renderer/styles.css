@@ -186,7 +186,9 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .tray-arrow { font-size: 12px; font-weight: 600; color: var(--primary); }
 .tray-sheet { position: relative; background: #fff; border: 1px solid #b8c2d3; box-shadow: 0 0 0 10px #3a3f47, 0 4px 14px rgb(0 0 0 / 25%); border-radius: 2px; margin: 10px; }
-.tray-cheque { position: absolute; cursor: grab; outline: 2px solid var(--primary); touch-action: none; overflow: hidden; }
+.tray-cheque { position: absolute; cursor: grab; touch-action: none; z-index: 1; }
+.tray-cheque.still { cursor: default; }
+.tray-cheque-turn { position: absolute; inset: 0; transform-origin: center; transform: scaleX(var(--mirror)); outline: 2px solid var(--primary); }
 .tray-cheque:active { cursor: grabbing; }
 .tray-cheque-image { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #e6f1f7 center / 100% 100% no-repeat; pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
 .tray-front .tray-cheque-image { opacity: 0.75; }
@@ -194,6 +196,23 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray-edge-bottom { bottom: -14px; }
 .tray-edge-top { top: -14px; }
 .tray-caption { max-width: 300px; text-align: center; }
+.tray-guide { position: absolute; top: 0; bottom: 0; left: 0; background: #f2a71b; border: 1px solid #b37400; border-radius: 2px; transform: translateX(var(--g-to)); z-index: 2; }
+.tray-steps { margin: 4px 0 0; padding-left: 22px; max-width: 320px; display: grid; gap: 4px; font-size: 13px; }
+.tray-steps li { padding: 2px 6px; border-radius: 4px; }
+.tray-note { max-width: 320px; font-size: 13px; }
+.tray-replay { font-weight: 600; }
+/* Loading animation, 6 s: open the guide, turn the cheque, put it in, close the guide, done. One step lights up at a time. */
+.tray-animate .tray-guide { animation: scp-guide 6s ease-in-out both; }
+.tray-animate .tray-cheque { animation: scp-cheque-in 6s ease-in-out both; }
+.tray-animate .tray-cheque-turn { animation: scp-cheque-turn 6s ease-in-out both; }
+.tray-steps li { animation: scp-step 6s linear; }
+@keyframes scp-guide { 0% { transform: translateX(var(--g-to)); } 15%, 60% { transform: translateX(var(--g-from)); } 78%, 100% { transform: translateX(var(--g-to)); } }
+@keyframes scp-cheque-in { 0%, 40% { transform: translateY(var(--from-y)); } 58%, 100% { transform: translateY(0); } }
+@keyframes scp-cheque-turn { 0%, 20% { transform: rotate(var(--turn-from)) scaleX(1); } 37%, 100% { transform: rotate(0deg) scaleX(var(--mirror)); } }
+@keyframes scp-step { 0%, 19.9% { background: #e8f0fb; color: var(--primary); font-weight: 600; } 20%, 100% { background: transparent; color: inherit; font-weight: 400; } }
+@media (prefers-reduced-motion: reduce) {
+  .tray-animate .tray-guide, .tray-animate .tray-cheque, .tray-animate .tray-cheque-turn, .tray-steps li { animation: none; }
+}
 .tray-align { display: flex; gap: 6px; }
 .tray-align button { padding: 4px 10px; font-size: 12px; }
 .tray-manual .tray-sheet { box-shadow: 0 0 0 10px #8a93a3, 0 4px 14px rgb(0 0 0 / 20%); }

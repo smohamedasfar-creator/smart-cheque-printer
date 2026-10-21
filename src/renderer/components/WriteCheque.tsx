@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatAmount, parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque, splitIntoWords } from '../../shared/chequeRender';
-import { LEADING_EDGE, nextChequeNo, pageGeometry, printProblems, type Placement } from '../../shared/print';
+import { LEADING_EDGE, nextChequeNo, pageGeometry, pageToTray, printProblems, type Placement } from '../../shared/print';
 import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
 import { activePositionIndex } from './ChequeBooks';
 import { PrintCorrection } from './PrintCorrection';
+import { TrayPicture } from './TrayPicture';
 import { WordBreakPicker } from './WordBreakPicker';
 import { useFitScale } from '../useFitScale';
 import type { Tab } from '../App';
@@ -228,6 +229,19 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
           <label className="check"><input type="checkbox" checked={showLeaf} onChange={e => setShowLeaf(e.target.checked)} /> Show the cheque image (it is never printed)</label>
         )}
         <p className="hint">The preview shows where text lands on the cheque.</p>
+        {template && account.feedRotation !== null && account.pageX !== null && account.pageY !== null && (
+          <details className="advanced loading-guide" open>
+            <summary>How to load this cheque</summary>
+            <TrayPicture
+              layout={template.layout}
+              image={template.image}
+              tray={account.positions[activePos]?.tray ?? 'rear'}
+              view={pageToTray(template.layout, account.positions[activePos]?.tray ?? 'rear', { rotation: account.feedRotation, x: account.pageX, y: account.pageY })}
+              interactive={false}
+              scale={0.9}
+            />
+          </details>
+        )}
         {template && rendered && 'print' in rendered && rendered.print && account.feedRotation !== null && account.pageX !== null && account.pageY !== null && (
           <details className="advanced">
             <summary>Printed in the wrong place? Fix it by dragging</summary>

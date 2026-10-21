@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { renderCheque } from '../../shared/chequeRender';
 import { blankLayout } from '../../shared/layoutDefaults';
+import { guessTray } from '../../shared/loading';
 import { defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayKind } from '../../shared/print';
 import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
@@ -245,6 +246,28 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     if (!posName.trim() || TRAYS.some(x => x.title === posName)) setPosName(TRAYS.find(x => x.value === t)?.title ?? '');
     if (layout) setPlacement(trayToPage(layout, t, defaultTrayView(layout, t, defaultTurn(t))));
   };
+  // Start a new cheque book on the tray its printer usually uses for a single cheque (the user can change it).
+  const [printerGuess, setPrinterGuess] = useState<{ name: string; tray: TrayKind; reason: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    window.chequeApi
+      .listPrinters()
+      .then(list => {
+        const name = settings.printerName || list.find(p => p.isDefault)?.name || '';
+        const guess = guessTray(name);
+        if (!alive || !guess) return;
+        setPrinterGuess({ name, ...guess });
+        if (positions0.length === 0 && account.pageX === null) chooseTray(guess.tray);
+      })
+      .catch(() => {
+        // no printer list: keep the back tray
+      });
+    return () => {
+      alive = false;
+    };
+    // Only when the form opens: later tray changes are the user's.
+  }, []);
+
   /** One of the four directions: re-seat the cheque pushed fully in and centred. */
   const chooseDirection = (r: FeedRotation) => {
     if (!layout) return;
@@ -340,6 +363,11 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         <label>Position name<input value={posName} onChange={e => setPosName(e.target.value)} placeholder="e.g. Back tray · date end first" /></label>
 
         <h3>1. Which tray?</h3>
+        {printerGuess && (
+          <p className="hint">
+            Usual for <b>{printerGuess.name}</b>: {TRAYS.find(t => t.value === printerGuess.tray)?.title}, because {printerGuess.reason}.
+          </p>
+        )}
         <div className="feed-options three">
           {TRAYS.map(t => (
             <button key={t.value} type="button" className={tray === t.value ? 'feed-option active' : 'feed-option'} onClick={() => chooseTray(t.value)}>

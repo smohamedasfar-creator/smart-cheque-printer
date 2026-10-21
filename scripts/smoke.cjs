@@ -30,6 +30,17 @@ async function shot(win, name) {
 
 const js = (win, code) => win.webContents.executeJavaScript(code);
 
+/** Replays the loading animation and captures the tray area at each of its five steps (set SMOKE_FRAMES=1). */
+async function frames(win, name) {
+  await click(win, '▶ Show me how');
+  const start = Date.now();
+  for (const [i, at] of [600, 1800, 3000, 4300, 6200].entries()) {
+    await wait(Math.max(0, at - (Date.now() - start)));
+    const r = await js(win, "(() => { const t = document.querySelector('.tray').getBoundingClientRect(); return { x: Math.max(0, Math.floor(t.left)), y: Math.max(0, Math.floor(t.top)), width: Math.ceil(t.width), height: Math.ceil(t.height) }; })()");
+    fs.writeFileSync(path.join(outDir, `${name}-${i + 1}.png`), (await win.webContents.capturePage(r)).toPNG());
+  }
+}
+
 const setField = (win, selector, value) =>
   js(win, `(() => {
     const el = document.querySelector(${JSON.stringify(selector)});
@@ -94,11 +105,16 @@ async function addChequeBook(win, file, name, index) {
   for (const [tray, title] of [['manual', 'Manual feed slot'], ['front', 'Front drawer'], ['rear', 'Back tray']]) {
     await js(win, `[...document.querySelectorAll('.feed-option')].find(b => b.textContent.startsWith('${title}')).click()`);
     await js(win, "[...document.querySelectorAll('.feed-option')].find(b => b.textContent.includes('Date end first')).click()");
-    await click(win, 'Right guide ⇥');
+    await click(win, 'Right side ⇥');
     await wait(150);
     check(`${tray}: tray picture shown`, await js(win, `Boolean(document.querySelector('.tray-${tray}'))`), true);
-    check(`${tray}: cheque against the right guide`, await js(win, "(() => { const s = document.querySelector('.tray-sheet').getBoundingClientRect(); const c = document.querySelector('.tray-cheque').getBoundingClientRect(); return Math.abs(c.right - s.right) < 2; })()"), true);
+    check(`${tray}: cheque against the right side`, await js(win, "(() => { const s = document.querySelector('.tray-sheet').getBoundingClientRect(); const c = document.querySelector('.tray-cheque').getBoundingClientRect(); return Math.abs(c.right - s.right) < 2; })()"), true);
     check(`${tray}: date end first selected`, await js(win, "document.querySelector('.feed-options:not(.three) .feed-option.active')?.textContent.includes('Date end first')"), true);
+    // Against the right side, one guide closes from the left; the steps say how to load it.
+    check(`${tray}: one guide closes from the left`, await js(win, "document.querySelectorAll('.tray-guide').length"), 1);
+    check(`${tray}: loading steps mention the guide`, await js(win, "[...document.querySelectorAll('.tray-steps li')].some(li => /guide/i.test(li.textContent))"), true);
+    if (process.env.SMOKE_FRAMES) await frames(win, `${index}e-load-${tray}`);
+    await wait(6300);
     await shot(win, `${index}c-tray-${tray}`);
   }
   // Fix by dragging: the test print landed 1 mm to the right, so the saved position moves the cheque back.
@@ -229,5 +245,5 @@ function finish() {
   app.exit(0);
 }
 
-setTimeout(() => { errors.push('timeout'); finish(); }, 120000);
+setTimeout(() => { errors.push("timeout"); finish(); }, 240000);
 require(path.join(__dirname, '..', 'dist', 'main', 'main', 'main.js'));
