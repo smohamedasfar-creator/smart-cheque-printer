@@ -12,7 +12,7 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Set up printing once',
-    'In the cheque book details, cut plain paper to the cheque size (or use a photocopy), load it as the picture shows and press Print graph. On the printed paper, read which graph point sits on its bottom-left corner: the red number is X, the blue number is Y (count the small mm lines from the nearest numbered line). Type both and press Apply. Then Test print on a photocopy to check.'
+    'In the cheque book details, load a photocopy of the cheque as the picture shows and press Test print. If the text is not on the cheque lines, move the whole print with the Up, Down, Left and Right buttons (1 mm each) and test again. When it sits on the lines, press Save cheque book. (For half-millimetre accuracy, Advanced has a printed graph.)'
   ],
   [
     'Write and print',
@@ -26,7 +26,7 @@ const STEPS: Array<[string, string]> = [
 
 const TIPS = [
   'Load every cheque the same way as the picture shows, with the paper guide just touching it.',
-  'If a cheque prints slightly off later, print the graph again and type the new corner numbers.',
+  'If a cheque prints slightly off later, open the cheque book, Test print and move the print with the arrows. Keep the fields on the lines of the cheque picture: the arrows, not the fields, make up for the printer.',
   'If the app says the printer printed the page smaller or bigger, set the printer to 100% (turn off "Fit to page").',
   'Choose the text size and font once in Settings. A long payee name stays on one line and gets smaller (not below 8 pt) so it never runs past its line.',
   'Back up your data regularly (Settings → Your data). The backup file holds your cheque books, payees and history.',

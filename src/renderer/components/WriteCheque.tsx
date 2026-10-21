@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatAmount, parseAmountToFils } from '../../shared/amountInWords';
+import { crossingFor } from '../../shared/banks';
 import { renderCheque, splitIntoWords } from '../../shared/chequeRender';
 import { LEADING_EDGE, nextChequeNo, pageGeometry, pageToTray, printProblems, type Placement } from '../../shared/print';
 import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
@@ -68,7 +69,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
   }, [account?.id, account?.lastChequeNo]);
 
   // Each cheque design has its own crossing, e.g. only the "or bearer" strike when A/C PAYEE is already printed.
-  useEffect(() => setCrossing(template?.layout.defaultCrossing ?? 'ac-payee-bearer'), [template?.id, template?.layout.defaultCrossing]);
+  useEffect(() => setCrossing(template ? crossingFor(template.layout) : 'ac-payee-bearer'), [template?.id, template?.layout.defaultCrossing]);
 
   // A chosen break only makes sense for the text it was chosen for.
   useEffect(() => setWordsBreakAt(null), [amountText]);

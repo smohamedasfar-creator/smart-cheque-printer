@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
-import { applyBank, matchBank, type BankTemplate } from '../../shared/banks';
+import { applyBank, bankBySize, crossingFor, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
 import { editableFields, moveDate, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
 import { graphStart, withGraphStart, type GraphPoint } from '../../shared/graph';
@@ -168,7 +168,8 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
     if (box) setLayout(updateField(L, key, withGraphStart(box, L.chequeHeight, next)));
   };
   // An existing FAB or RAKBANK design can take the bank library's measured writing spaces in one click.
-  const libraryMatch = !detection && !isNew && !libraryApplied ? matchBank(draft.layout) : null;
+  // Known by its lines, or by its size when the fields were moved by hand (often to make up for where a printer prints).
+  const libraryMatch = !detection && !isNew && !libraryApplied ? matchBank(draft.layout) ?? bankBySize(draft.layout) : null;
   const field = selected ? editableFields(draft.layout).find(f => f.key === selected) : undefined;
   const setBox = (key: 'x' | 'y' | 'width' | 'height', value: number) =>
     field && Number.isFinite(value) && setLayout(updateField(draft.layout, field.key, { ...field.box, [key]: value }));
@@ -215,7 +216,8 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
         {libraryMatch && (
           <p className="hint">
             This is a {libraryMatch.name} cheque.{' '}
-            <button type="button" className="primary" onClick={() => { setLayout(applyBank(libraryMatch, draft.layout)); setLibraryApplied(true); }}>Use the {libraryMatch.name} layout from the bank library</button>
+            <button type="button" className="primary" onClick={() => { setLayout(applyBank(libraryMatch, draft.layout)); setLibraryApplied(true); }}>Put every field on the {libraryMatch.name} cheque lines</button>
+            <br />Each field should sit on its line in the picture. If the printed cheque comes out off, move the print in the cheque book&apos;s Set up printing, not the fields here.
           </p>
         )}
         {bank && (
@@ -286,7 +288,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
           <h3>Layout options</h3>
           <label>
             Crossing printed by default
-            <select value={draft.layout.defaultCrossing ?? 'ac-payee-bearer'} onChange={e => setLayout({ ...draft.layout, defaultCrossing: e.target.value as CrossingOption })}>
+            <select value={crossingFor(draft.layout)} onChange={e => setLayout({ ...draft.layout, defaultCrossing: e.target.value as CrossingOption })}>
               {Object.entries(CROSSING_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>

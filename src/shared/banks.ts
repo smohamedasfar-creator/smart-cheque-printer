@@ -2,7 +2,7 @@
 // Positions are millimetres from the cheque's top-left corner, measured on real blank leaves. No account,
 // name or picture is stored: only where each bank's cheque has room to write.
 import { defaultCrossing, scaleLayout } from './layoutDefaults';
-import type { ChequeLayout, FieldBox } from './types';
+import type { ChequeLayout, CrossingOption, FieldBox } from './types';
 
 export interface BankTemplate {
   id: string;
@@ -97,4 +97,20 @@ export function matchBank(detected: ChequeLayout, found?: readonly string[]): Ba
 export function applyBank(bank: BankTemplate, detected: ChequeLayout): ChequeLayout {
   const scaled = scaleLayout(bank.layout, detected.chequeWidth / bank.layout.chequeWidth);
   return { ...scaled, chequeHeight: detected.chequeHeight };
+}
+
+/**
+ * The library bank whose cheque has this size, when exactly one does. Used for a saved design whose writing spaces
+ * were moved by hand, so its lines no longer match but the cheque is still that bank's.
+ */
+export function bankBySize(layout: Pick<ChequeLayout, 'chequeWidth' | 'chequeHeight'>): BankTemplate | null {
+  const hits = BANKS.filter(
+    b => Math.abs(b.layout.chequeWidth - layout.chequeWidth) <= SIZE_TOLERANCE_MM && Math.abs(b.layout.chequeHeight - layout.chequeHeight) <= SIZE_TOLERANCE_MM,
+  );
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** The crossing a cheque prints by default: its own choice, else its bank's (A/C PAYEE once), else A/C Payee + strike. */
+export function crossingFor(layout: ChequeLayout): CrossingOption {
+  return layout.defaultCrossing ?? bankBySize(layout)?.layout.defaultCrossing ?? 'ac-payee-bearer';
 }

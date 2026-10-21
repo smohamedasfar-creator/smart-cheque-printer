@@ -18,8 +18,8 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
   the cheque), cross only, none. Each cheque layout keeps its own default, so A/C PAYEE prints once.
 - **Graph layout**: the cheque is graph paper with (0, 0) at its bottom-left corner; each writing space has an X, Y and length in mm
   that you can type or drag.
-- **Set up printing with a printed graph**: print the graph on plain paper cut to the cheque size, read the red X and blue Y numbers
-  that sit on the paper's bottom-left corner, type them and press Apply. No scanner needed.
+- **Set up printing in two clicks**: Test print on a photocopy, then move the whole print with Up / Down / Left / Right (1 mm each)
+  until the text sits on the lines. Advanced: a printed graph read at the paper's bottom-left corner, exact to half a millimetre.
 - **Calibrate from one scan** (Advanced): print a test page on a photocopy of the cheque and choose its scan. The page carries coded dot rows
   across its whole width; the app finds the cheque in the scan by matching its own picture, reads the dots and works out where the
   cheque really sits in the printer (any tray, any side, either way round), and reports a printer that scales the page.
@@ -37,8 +37,8 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 
 1. **Cheque Books → Add cheque book**: drop a scan of a blank leaf (or a phone photo on the ruler sheet), check the layout, enter the
    name and last cheque number.
-2. **Set up printing** (same screen): load plain paper cut to the cheque size as the picture shows, press **Print graph**, read the
-   red X and blue Y numbers at the paper's bottom-left corner, type them and press **Apply**, then **Test print** on a photocopy.
+2. **Set up printing** (same screen): load a photocopy of the cheque as the picture shows, press **Test print**, and if the text is
+   off the lines move the print with the arrow buttons and test again. Save.
 3. **Write Cheque**: choose the cheque book, enter payee, amount and date, and print.
 
 Developers: `npm test` runs the unit tests (including a virtual-printer physics model); `npm run test:print` prints real PDFs through

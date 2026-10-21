@@ -103,13 +103,16 @@ async function addChequeBook(win, file, name, index) {
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   // The simple view: three steps up front, the technical settings closed away.
-  check('details: print graph offered', await js(win, "[...document.querySelectorAll('.setup-steps button')].some(b => b.textContent === 'Print graph')"), true);
+  check('details: test print is the first step', await js(win, "document.querySelector('.setup-steps button')?.textContent"), 'Test print');
+  check('details: four arrows move the print', await js(win, "document.querySelectorAll('.setup-steps .nudge button').length"), 4);
+  check('details: print graph kept under Advanced', await js(win, "[...document.querySelectorAll('details.advanced button')].some(b => b.textContent === 'Print graph')"), true);
   check('details: advanced settings closed', await js(win, "document.querySelector('details.advanced').open"), false);
   check('details: not set up yet', await js(win, "document.querySelector('.form').textContent.includes('Not set up yet')"), true);
   await wait(6300);
   await shot(win, `${index}b-details`);
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
+  await moveByArrows(win, name, index);
   await calibrateByGraph(win, name, index);
   await calibrateByScan(win, name, index);
 
@@ -147,6 +150,31 @@ async function addChequeBook(win, file, name, index) {
   // Back tray, date end first, against the right guide = the page's left edge. Date end first, the cheque's
   // left-to-right runs up the page, so text that landed 1 mm right means the cheque really sits 1 mm lower.
   check(`${name}: saved position`, JSON.stringify(saved && { tray: saved.positions[0]?.tray, rotation: saved.feedRotation, x: saved.pageX, y: saved.pageY }), JSON.stringify({ tray: 'rear', rotation: 270, x: 0, y: 1 }));
+}
+
+/** The simple path: the arrows move the whole print on the cheque, saved as the print position. */
+async function moveByArrows(win, name, index) {
+  const { correctionFromCorner } = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'graph.js'));
+  const before = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const template = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === before.templateId);
+  await openDetails(win, name);
+  await click(win, '↑ Up');
+  await wait(100);
+  await click(win, '↑ Up');
+  await wait(100);
+  await click(win, '← Left');
+  await wait(200);
+  const said = await js(win, "[...document.querySelectorAll('.form .success')].map(p => p.textContent).join(' ')");
+  check(`${name}: arrows report the move`, said.includes('Print moved 2 mm up and 1 mm left'), true);
+  await js(win, "document.querySelector('.setup-steps').scrollIntoView({ block: 'start' })");
+  await shot(win, `${index}c-arrows`);
+  await click(win, 'Save cheque book');
+  await waitFor(win, "document.querySelector('.template-grid')");
+  const after = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  // Moving the print 1 mm left and 2 mm up is what a corner reading of X -1, Y 2 does.
+  const want = correctionFromCorner(template.layout, { rotation: before.feedRotation, x: before.pageX, y: before.pageY }, { x: -1, y: 2 });
+  check(`${name}: saved position moved by the arrows`, JSON.stringify({ r: after.feedRotation, x: after.pageX, y: after.pageY }), JSON.stringify({ r: want.rotation, x: want.x, y: want.y }));
+  check(`${name}: position marked set up`, after.positions.some(p => p.calibrated === true), true);
 }
 
 /** The graph path: type the corner reading of a printed graph, Apply, Save, and check the saved print position. */

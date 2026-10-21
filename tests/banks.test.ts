@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { applyBank, BANKS, matchBank } from '../src/shared/banks';
+import { applyBank, bankBySize, BANKS, crossingFor, matchBank } from '../src/shared/banks';
 import { blankLayout, scaleLayout } from '../src/shared/layoutDefaults';
 import { editableFields } from '../src/shared/layoutFields';
 
@@ -53,5 +53,23 @@ describe('bank library', () => {
     const applied = applyBank(bank, detected);
     expect(applied.chequeWidth).toBeCloseTo(detected.chequeWidth, 5);
     expect(applied.words1.x + applied.words1.width).toBeCloseTo((bank.layout.words1.x + bank.layout.words1.width) * 1.01, 1);
+  });
+
+  test('a RAKBANK design whose fields were moved by hand is still known by its size', () => {
+    const rak = BANKS.find(b => b.id === 'rakbank')!;
+    const moved = { ...rak.layout, defaultCrossing: undefined, payee: { ...rak.layout.payee, y: rak.layout.payee.y - 10 }, words1: { ...rak.layout.words1, y: 30 } };
+    expect(matchBank(moved)?.id).not.toBe('rakbank');
+    expect(bankBySize(moved)?.id).toBe('rakbank');
+  });
+
+  test('a cheque of no library size is no bank', () => {
+    expect(bankBySize(blankLayout(175, 70))).toBeNull();
+  });
+
+  test('crossing: own choice first, then the bank (A/C PAYEE once on RAKBANK), else A/C Payee + strike', () => {
+    const rak = BANKS.find(b => b.id === 'rakbank')!;
+    expect(crossingFor({ ...rak.layout, defaultCrossing: undefined })).toBe('bearer-only');
+    expect(crossingFor({ ...rak.layout, defaultCrossing: 'ac-payee' })).toBe('ac-payee');
+    expect(crossingFor(blankLayout(175, 70))).toBe('ac-payee-bearer');
   });
 });

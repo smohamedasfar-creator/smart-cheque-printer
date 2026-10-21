@@ -247,3 +247,5 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .graph-table td.name { cursor: pointer; }
 .corner-reading { align-items: flex-end; gap: 8px; margin-top: 6px; }
 .corner-reading input { width: 96px; }
+.nudge { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.nudge button { min-width: 72px; }
