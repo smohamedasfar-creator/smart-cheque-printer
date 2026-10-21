@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
+import { applyBank, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
 import { editableFields, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
 import type { ChequeLayout, ChequeTemplate, CrossingOption, PrintSettings } from '../../shared/types';
@@ -38,6 +39,8 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<FieldKey | null>(null);
   const [widthInput, setWidthInput] = useState('');
+  /** A recognised bank and the layout detection found, to go back to it. */
+  const [bank, setBank] = useState<{ bank: BankTemplate; detected: ChequeLayout } | null>(null);
   const [sample, setSample] = useState({ payee: 'Sample Trading LLC', amount: '12,345.50', date: new Date().toLocaleDateString('en-CA'), crossing: 'ac-payee-bearer' as CrossingOption });
   const fileInput = useRef<HTMLInputElement>(null);
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
@@ -60,7 +63,11 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
       setDetection(result);
       setSelected(null);
       setWidthInput('');
-      setDraft(d => ({ ...d, layout: result.layout, image: chequeImageDataUrl(loaded, result) }));
+      // A cheque from the bank library gets that bank's measured writing spaces.
+      const known = result.sizeKnown ? matchBank(result.layout) : null;
+      setBank(known ? { bank: known, detected: result.layout } : null);
+      const layout = known ? applyBank(known, result.layout) : result.layout;
+      setDraft(d => ({ ...d, layout, image: chequeImageDataUrl(loaded, result), name: d.name || (known ? known.name : d.name) }));
     } catch (e) {
       setError(`Could not read this file: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -146,12 +153,19 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
           <div className="detect-summary">
             <span className="chip ok">Size {draft.layout.chequeWidth.toFixed(1)} × {draft.layout.chequeHeight.toFixed(1)} mm{detection.sizeKnown ? '' : ' (estimated)'}</span>
             {upload?.ruler && <span className="chip ok">✓ Measured with the ruler sheet</span>}
+            {bank && <span className="chip ok">✓ Recognised {bank.bank.name}: writing spaces from the bank library</span>}
             {detection.croppedUpload ? <span className="chip">Cropped upload</span> : <span className="chip">Found cheque on page</span>}
             {detection.transform.flip && <span className="chip">Turned the right way up</span>}
             {Math.abs(detection.transform.skewDeg) >= 0.1 && <span className="chip">Straightened {Math.abs(detection.transform.skewDeg).toFixed(1)}°</span>}
             {detection.found.map(f => <span key={f} className="chip ok">✓ {FIELD_NAMES[f] ?? f}</span>)}
             {detection.guessed.map(f => <span key={f} className="chip warn">? {FIELD_NAMES[f] ?? f} — please check</span>)}
           </div>
+        )}
+        {bank && (
+          <p className="hint">
+            The writing spaces come from the {bank.bank.name} cheque in the bank library.{' '}
+            <button type="button" className="link" onClick={() => { setDraft(d => ({ ...d, layout: bank.detected })); setBank(null); }}>Use the detected spaces instead</button>
+          </p>
         )}
         {detection && !detection.sizeKnown && (
           <div className="width-prompt">
