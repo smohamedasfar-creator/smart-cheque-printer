@@ -14,8 +14,13 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 - **Amount in words** (UK/US style, optional hyphens, fils as words or `50/100`, custom prefix/suffix) that wraps to line 2,
   never runs past a printed line, and lets you click the word that starts line 2.
 - **Text size** (8 pt and up) and **any installed font**; a long payee name stays on one line and shrinks to fit (never below 8 pt).
-- Crossing options: A/C Payee, Not Negotiable, strike "or bearer", cross only, none.
-- **Calibrate from one scan**: print a test page on a photocopy of the cheque and choose its scan. The page carries coded dot rows
+- Crossing options: A/C Payee, Not Negotiable, strike "or bearer", strike "or bearer" only (when A/C PAYEE is already printed on
+  the cheque), cross only, none. Each cheque layout keeps its own default, so A/C PAYEE prints once.
+- **Graph layout**: the cheque is graph paper with (0, 0) at its bottom-left corner; each writing space has an X, Y and length in mm
+  that you can type or drag.
+- **Set up printing with a printed graph**: print the graph on plain paper cut to the cheque size, read the red X and blue Y numbers
+  that sit on the paper's bottom-left corner, type them and press Apply. No scanner needed.
+- **Calibrate from one scan** (Advanced): print a test page on a photocopy of the cheque and choose its scan. The page carries coded dot rows
   across its whole width; the app finds the cheque in the scan by matching its own picture, reads the dots and works out where the
   cheque really sits in the printer (any tray, any side, either way round), and reports a printer that scales the page.
 - **Ruler sheet for phone photos**: print the A4 ruler sheet, lay the cheque on its grey box and take a photo: the corner squares give
@@ -32,8 +37,8 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 
 1. **Cheque Books → Add cheque book**: drop a scan of a blank leaf (or a phone photo on the ruler sheet), check the layout, enter the
    name and last cheque number.
-2. **Set up printing** (same screen): load a photocopy of the cheque as the picture shows, press **Print test page**, scan the printed
-   cheque and choose the scan. Done.
+2. **Set up printing** (same screen): load plain paper cut to the cheque size as the picture shows, press **Print graph**, read the
+   red X and blue Y numbers at the paper's bottom-left corner, type them and press **Apply**, then **Test print** on a photocopy.
 3. **Write Cheque**: choose the cheque book, enter payee, amount and date, and print.
 
 Developers: `npm test` runs the unit tests (including a virtual-printer physics model); `npm run test:print` prints real PDFs through

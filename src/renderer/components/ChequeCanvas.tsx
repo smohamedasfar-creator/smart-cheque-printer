@@ -14,6 +14,8 @@ interface Props {
   selected?: FieldKey | null;
   onSelect?: (key: FieldKey | null) => void;
   onChange?: (layout: ChequeLayout) => void;
+  /** Shows graph paper over the cheque, counted in mm from its bottom-left corner. */
+  graph?: boolean;
 }
 
 const PT_TO_MM = 0.3528;
@@ -29,7 +31,7 @@ interface Drag {
 }
 
 /** The cheque as it will print: the uploaded leaf with live text on top, optionally editable. */
-export function ChequeCanvas({ layout, items, fontFamily, image, scale = 5, editable = false, selected = null, onSelect, onChange }: Props) {
+export function ChequeCanvas({ layout, items, fontFamily, image, scale = 5, editable = false, selected = null, onSelect, onChange, graph = false }: Props) {
   const drag = useRef<Drag | null>(null);
   const mm = (v: number) => `${v * scale}px`;
 
@@ -84,6 +86,8 @@ export function ChequeCanvas({ layout, items, fontFamily, image, scale = 5, edit
         )}
       </svg>
 
+      {graph && <GraphOverlay width={layout.chequeWidth} height={layout.chequeHeight} scale={scale} />}
+
       {items.map((item, i) =>
         item.kind === 'text' ? (
           <div
@@ -121,5 +125,23 @@ export function ChequeCanvas({ layout, items, fontFamily, image, scale = 5, edit
           </div>
         ))}
     </div>
+  );
+}
+
+/** Graph paper over the cheque: (0, 0) is the bottom-left corner, numbers every 10 mm along the bottom (X) and left (Y). */
+function GraphOverlay({ width, height, scale }: { width: number; height: number; scale: number }) {
+  const weight = (v: number) => (v % 10 === 0 ? 'cm' : v % 5 === 0 ? 'half' : 'mm');
+  const lines = [];
+  for (let x = 0; x <= width; x++) lines.push(<line key={`x${x}`} className={weight(x)} x1={x} y1={0} x2={x} y2={height} />);
+  for (let y = 0; y <= height; y++) lines.push(<line key={`y${y}`} className={weight(y)} x1={0} y1={height - y} x2={width} y2={height - y} />);
+  const labels = [];
+  for (let x = 10; x < width; x += 10) labels.push(<text key={`lx${x}`} className="gx" x={x + 0.4} y={height - 0.8}>{x}</text>);
+  for (let y = 10; y < height; y += 10) labels.push(<text key={`ly${y}`} className="gy" x={0.6} y={height - y - 0.6}>{y}</text>);
+  return (
+    <svg className="graph-overlay" width={width * scale} height={height * scale} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      {lines}
+      {labels}
+      <text className="g0" x={0.6} y={height - 0.8}>0,0</text>
+    </svg>
   );
 }

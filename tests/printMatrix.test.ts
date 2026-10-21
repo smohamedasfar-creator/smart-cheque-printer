@@ -23,6 +23,7 @@ import {
 } from '../src/shared/print';
 import { blankLayout } from '../src/shared/layoutDefaults';
 import { calibrationPattern, calibrationResult, DOT_MM, locateCheque } from '../src/shared/detect/calibrate';
+import { correctionFromCorner } from '../src/shared/graph';
 import { renderCheque } from '../src/shared/chequeRender';
 import { DEFAULT_SETTINGS, type ChequeLayout, type FeedRotation, type TextItem } from '../src/shared/types';
 
@@ -301,6 +302,32 @@ describe('virtual printer: fixing a test print by dragging', () => {
         for (const c of probes(layout)) {
           const now = landsOnCheque(layout, tray, actual, fix.placement, error, c);
           if (!near(now, c, 0.15)) { left.push(`${name}: still ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
+        }
+      }
+    }
+    expect(left.slice(0, 6)).toEqual([]);
+  });
+
+  test('reading the printed graph at the paper corner fixes every tray, direction, size and position', () => {
+    const left: string[] = [];
+    for (const { tray, turn, w, h, s } of cases) {
+      const layout = layoutOf(w, h);
+      const actual = spot(layout, tray, turn, s);
+      const p1 = trayToPage(layout, tray, actual);
+      for (const error of [{ x: 0, y: 0 }, { x: 3.5, y: -7 }, { x: -12, y: 9 }]) {
+        // Which printed cheque point landed on the paper's bottom-left corner (cheque (0, h) from the top-left)?
+        const f = (c: Pt) => landsOnCheque(layout, tray, actual, p1, error, c);
+        const o = f({ x: 0, y: 0 }), ex = f({ x: 1, y: 0 }), ey = f({ x: 0, y: 1 });
+        const [a, b, c2, d2] = [ex.x - o.x, ey.x - o.x, ex.y - o.y, ey.y - o.y];
+        const det = a * d2 - b * c2;
+        const [rx, ry] = [0 - o.x, h - o.y];
+        const printed = { x: (d2 * rx - b * ry) / det, y: (a * ry - c2 * rx) / det };
+        // The person reads the graph numbers there, to the nearest 0.5 mm like on a ruler.
+        const reading = { x: Math.round(printed.x * 2) / 2, y: Math.round((h - printed.y) * 2) / 2 };
+        const fixed = correctionFromCorner(layout, p1, reading);
+        for (const c of probes(layout)) {
+          const now = landsOnCheque(layout, tray, actual, fixed, error, c);
+          if (!near(now, c, 0.36)) { left.push(`${tray} ${turn} ${w}x${h} ${s} error ${error.x},${error.y}: still ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
         }
       }
     }

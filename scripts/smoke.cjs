@@ -103,13 +103,14 @@ async function addChequeBook(win, file, name, index) {
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   // The simple view: three steps up front, the technical settings closed away.
-  check('details: print test page offered', await js(win, "[...document.querySelectorAll('button')].some(b => b.textContent === 'Print test page')"), true);
+  check('details: print graph offered', await js(win, "[...document.querySelectorAll('.setup-steps button')].some(b => b.textContent === 'Print graph')"), true);
   check('details: advanced settings closed', await js(win, "document.querySelector('details.advanced').open"), false);
-  check('details: not calibrated yet', await js(win, "document.querySelector('.form').textContent.includes('Not calibrated yet')"), true);
+  check('details: not set up yet', await js(win, "document.querySelector('.form').textContent.includes('Not set up yet')"), true);
   await wait(6300);
   await shot(win, `${index}b-details`);
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
+  await calibrateByGraph(win, name, index);
   await calibrateByScan(win, name, index);
 
   // Advanced: every tray, load the cheque date end first against the right guide, and check the picture.
@@ -148,6 +149,27 @@ async function addChequeBook(win, file, name, index) {
   check(`${name}: saved position`, JSON.stringify(saved && { tray: saved.positions[0]?.tray, rotation: saved.feedRotation, x: saved.pageX, y: saved.pageY }), JSON.stringify({ tray: 'rear', rotation: 270, x: 0, y: 1 }));
 }
 
+/** The graph path: type the corner reading of a printed graph, Apply, Save, and check the saved print position. */
+async function calibrateByGraph(win, name, index) {
+  const { correctionFromCorner } = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'graph.js'));
+  const before = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const template = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === before.templateId);
+  await openDetails(win, name);
+  await setField(win, '.corner-reading input', '-1.5');
+  await js(win, "(() => { const el = document.querySelectorAll('.corner-reading input')[1]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '2'); el.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await click(win, 'Apply');
+  await wait(200);
+  const said = await js(win, "[...document.querySelectorAll('.form .success')].map(p => p.textContent).join(' ')");
+  check(`${name}: graph reading applied`, said.includes('1.5 mm left and 2 mm up'), true);
+  await js(win, "document.querySelector('.corner-reading').scrollIntoView({ block: 'center' })");
+  await shot(win, `${index}h-graph-applied`);
+  await click(win, 'Save cheque book');
+  await waitFor(win, "document.querySelector('.template-grid')");
+  const after = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const want = correctionFromCorner(template.layout, { rotation: before.feedRotation, x: before.pageX, y: before.pageY }, { x: -1.5, y: 2 });
+  check(`${name}: saved position follows the graph reading`, JSON.stringify({ r: after.feedRotation, x: after.pageX, y: after.pageY }), JSON.stringify({ r: want.rotation, x: want.x, y: want.y }));
+}
+
 async function openDetails(win, name) {
   await js(win, `[...document.querySelectorAll('.template-card')].find(c => c.textContent.includes(${JSON.stringify(name)})).querySelector('button').click()`);
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
@@ -172,7 +194,7 @@ async function calibrateByScan(win, name, index) {
     const bytes = Uint8Array.from(atob('${png.toString('base64')}'), c => c.charCodeAt(0));
     const dt = new DataTransfer();
     dt.items.add(new File([bytes], 'test-scan.png', { type: 'image/png' }));
-    const input = document.querySelector('.setup-steps input[type=file]');
+    const input = document.querySelector('details.advanced input[type=file]');
     input.files = dt.files;
     input.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);

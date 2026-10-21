@@ -6,6 +6,7 @@ import { defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems,
 import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
+import { correctionFromCorner } from '../../shared/graph';
 import { ChequeCanvas } from './ChequeCanvas';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
@@ -232,6 +233,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   /** The position the last test page was printed for: the scan is read against it. */
   const [testedFor, setTestedFor] = useState<Placement | null>(null);
   const scanInput = useRef<HTMLInputElement>(null);
+  /** The graph numbers read on the printed paper's bottom-left corner, as typed. */
+  const [corner, setCorner] = useState({ x: '', y: '' });
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
   const onCheque = { ...settings, offsetX: draft.offsetX, offsetY: draft.offsetY };
@@ -332,6 +335,33 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     }
   };
 
+  /** Step 2: graph paper over the cheque, counted from its bottom-left corner. */
+  const printGraph = async () => {
+    if (!template || !placement) return;
+    const result = await window.chequeApi.print({ items: [], layout: template.layout, settings, testPrint: false, graph: true, placement });
+    if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
+    setTestedFor(placement);
+    setCorner({ x: '', y: '' });
+    setMessage({ kind: 'ok', text: 'Graph sent. Read the X and Y numbers at the bottom-left corner of the printed paper and type them in step 3.' });
+  };
+
+  /** Step 3: the graph point on the paper's corner tells how far the print landed off; move it back by that. */
+  const applyCorner = () => {
+    const x = Number(corner.x);
+    const y = Number(corner.y);
+    if (!template || corner.x.trim() === '' || corner.y.trim() === '' || !Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 40 || Math.abs(y) > 40) {
+      setMessage({ kind: 'error', text: "Type the two graph numbers at the paper's bottom-left corner, for example X -1.5 and Y 2 (both 0 if the corner is exactly on 0, 0)." });
+      return;
+    }
+    const base = testedFor ?? placement;
+    if (!base) return;
+    setPlacement(correctionFromCorner(template.layout, base, { x, y }));
+    setCalibrated(true);
+    setTestedFor(null);
+    const moves = [x ? `${Math.abs(x)} mm ${x > 0 ? 'right' : 'left'}` : '', y ? `${Math.abs(y)} mm ${y > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(' and ');
+    setMessage({ kind: 'ok', text: `✓ Set up. ${moves ? `The print moves ${moves} on the cheque.` : 'The print was already in place.'} Press Save cheque book, then Test print to check.` });
+  };
+
   /** Step 2: the test page with the sample text and the calibration dots. */
   const printTestPage = async () => {
     if (!template || !sample || !placement) return;
@@ -390,18 +420,26 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
         <h3>Set up printing</h3>
         <p className={calibrated ? 'success' : 'hint'}>
-          {calibrated ? '✓ Calibrated: this cheque book prints in place on your printer.' : 'Not calibrated yet. Three steps, once per cheque book:'}
+          {calibrated ? '✓ Set up: this cheque book prints in place on your printer.' : 'Not set up yet. Once per cheque book:'}
         </p>
         <ol className="setup-steps">
-          <li>Load a photocopy of this cheque (cut to size) or a spoiled cheque into the printer, as the picture shows.</li>
+          <li>Cut plain paper to the size of this cheque (or use a photocopy of it) and load it as the picture shows.</li>
           <li>
-            <button type="button" className="primary" onClick={printTestPage} disabled={!template || !!busy}>Print test page</button>
+            <button type="button" className="primary" onClick={printGraph} disabled={!template || !!busy}>Print graph</button>
+            <span className="hint"> Graph paper in mm, counted from the cheque's bottom-left corner: red numbers are X, blue numbers are Y.</span>
           </li>
           <li>
-            Scan the printed cheque (300 DPI) and{' '}
-            <button type="button" onClick={() => scanInput.current?.click()} disabled={!template || !!busy}>choose the scan</button>
-            <span className="hint"> The app finds where your printer put the ink and moves the print to match.</span>
-            <input ref={scanInput} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden onChange={e => { onScan(e.target.files?.[0]); e.target.value = ''; }} />
+            On the printed paper, look at its <b>bottom-left corner</b>. Which graph point sits exactly on that corner? Count the small mm lines
+            from the nearest numbered lines.
+            <div className="row corner-reading">
+              <label>X (red)<input type="number" step="0.5" value={corner.x} onChange={e => setCorner(c => ({ ...c, x: e.target.value }))} placeholder="e.g. -1.5" /></label>
+              <label>Y (blue)<input type="number" step="0.5" value={corner.y} onChange={e => setCorner(c => ({ ...c, y: e.target.value }))} placeholder="e.g. 2" /></label>
+              <button type="button" className="primary" onClick={applyCorner} disabled={!template}>Apply</button>
+            </div>
+          </li>
+          <li>
+            Check with a photocopy of the cheque:{' '}
+            <button type="button" onClick={() => testPrint(false)} disabled={!template}>Test print</button>
           </li>
         </ol>
         {busy && <div className="busy">{busy}</div>}
@@ -415,6 +453,13 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
         <details className="advanced" onToggle={e => setAdvanced((e.target as HTMLDetailsElement).open)}>
           <summary>Advanced: tray, direction and manual adjustment</summary>
+          <h3>Set up from a scan instead</h3>
+          <p className="hint">Print a test page with dot rows, scan the printed cheque at 300 DPI on a flatbed scanner and choose the scan: the app reads where the ink landed.</p>
+          <div className="actions">
+            <button type="button" onClick={printTestPage} disabled={!template || !!busy}>Print test page</button>
+            <button type="button" onClick={() => scanInput.current?.click()} disabled={!template || !!busy}>Choose the scan</button>
+            <input ref={scanInput} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden onChange={e => { onScan(e.target.files?.[0]); e.target.value = ''; }} />
+          </div>
           <h3>Print positions</h3>
           <p className="hint">One position for every way this cheque book goes into a printer. You choose the position when printing.</p>
           {draft.positions.length > 0 && (

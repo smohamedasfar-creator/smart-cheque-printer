@@ -67,6 +67,9 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     if (account) setChequeNo(nextChequeNo(account.lastChequeNo));
   }, [account?.id, account?.lastChequeNo]);
 
+  // Each cheque design has its own crossing, e.g. only the "or bearer" strike when A/C PAYEE is already printed.
+  useEffect(() => setCrossing(template?.layout.defaultCrossing ?? 'ac-payee-bearer'), [template?.id, template?.layout.defaultCrossing]);
+
   // A chosen break only makes sense for the text it was chosen for.
   useEffect(() => setWordsBreakAt(null), [amountText]);
 

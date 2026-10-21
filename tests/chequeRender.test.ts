@@ -128,6 +128,13 @@ describe('renderCheque', () => {
     expect(byRole(items, 'ac-payee')).toHaveLength(0);
   });
 
+  test('a cheque that already says A/C PAYEE gets only the "or bearer" strike: no second A/C PAYEE, no lines', () => {
+    const { items } = renderCheque(layout, { ...cheque, crossing: 'bearer-only' }, DEFAULT_SETTINGS, measure);
+    expect(items.filter(i => i.kind === 'line')).toHaveLength(0);
+    expect(byRole(items, 'ac-payee')).toHaveLength(0);
+    expect(byRole(items, 'bearer')).toHaveLength(1);
+  });
+
   test('keeps a long payee on one line with a smaller font', () => {
     const longPayee = { ...cheque, payee: 'X'.repeat(100) };
     const { items, warnings } = renderCheque(layout, longPayee, DEFAULT_SETTINGS, measure);

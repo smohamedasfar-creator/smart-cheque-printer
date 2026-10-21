@@ -29,6 +29,7 @@ export const BANKS: BankTemplate[] = [
       bearerStrike: { ...box(3.2, 30.15, 14, 2.9), text: 'XXXXXX' },
       acPayee: crossing.acPayee,
       crossingLines: crossing.lines,
+      defaultCrossing: 'ac-payee-bearer',
     },
   },
   {
@@ -46,6 +47,8 @@ export const BANKS: BankTemplate[] = [
       bearerStrike: { ...box(6.6, 39.4, 22, 6), text: 'XXXXXXXX' },
       acPayee: crossing.acPayee,
       crossingLines: crossing.lines,
+      // RAKBANK prints A/C PAYEE ONLY in the middle of the cheque.
+      defaultCrossing: 'bearer-only',
     },
   },
 ];

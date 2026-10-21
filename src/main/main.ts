@@ -33,6 +33,7 @@ async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }>
     fontFamily: job.settings.fontFamily,
     guides: job.testPrint,
     marks: job.marks === true,
+    graph: job.graph === true,
     // The scan-to-calibrate test print: dot rows across the page around where the cheque is expected.
     pageDots: job.calibrate && job.placement && job.placement.rotation !== null && job.placement.x !== null && job.placement.y !== null
       ? calibrationPattern(layout, { rotation: job.placement.rotation, x: job.placement.x, y: job.placement.y })

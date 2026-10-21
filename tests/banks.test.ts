@@ -42,6 +42,11 @@ describe('bank library', () => {
     expect(matchBank(blankLayout(157.65, 79.93))).toBeNull();
   });
 
+  test('RAKBANK cheques already say A/C PAYEE, so only "or bearer" is struck; FAB gets the corner crossing', () => {
+    expect(BANKS.find(b => b.id === 'rakbank')!.layout.defaultCrossing).toBe('bearer-only');
+    expect(BANKS.find(b => b.id === 'fab')!.layout.defaultCrossing).toBe('ac-payee-bearer');
+  });
+
   test('applying a bank keeps the measured size and scales the bank layout to it', () => {
     const bank = BANKS[1];
     const detected = scaleLayout(bank.layout, 1.01);

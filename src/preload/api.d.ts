@@ -21,6 +21,8 @@ export interface PrintJob {
   marks?: boolean;
   /** Adds the calibration dot rows; scan the printed test so the app can find where the cheque sits. */
   calibrate?: boolean;
+  /** Prints graph paper over the cheque, counted from its bottom-left corner. */
+  graph?: boolean;
   /** The cheque book's own feed direction and page position, when set. */
   placement?: PagePlacement;
 }

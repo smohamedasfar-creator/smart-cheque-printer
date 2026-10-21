@@ -229,3 +229,21 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .correction-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .correction-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .correction-panel h3 { margin-top: 0; }
+
+/* Graph paper over the cheque in the layout editor: (0, 0) at the bottom-left corner. */
+.graph-overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+.graph-overlay line.mm { stroke: rgb(0 90 200 / 12%); stroke-width: 0.08; }
+.graph-overlay line.half { stroke: rgb(0 90 200 / 25%); stroke-width: 0.12; }
+.graph-overlay line.cm { stroke: rgb(0 90 200 / 50%); stroke-width: 0.2; }
+.graph-overlay text { font-size: 2.4px; font-family: Arial, sans-serif; font-weight: bold; paint-order: stroke; stroke: #fff; stroke-width: 0.5px; }
+.graph-overlay .gx { fill: #c00000; }
+.graph-overlay .gy { fill: #0050c8; }
+.graph-overlay .g0 { fill: #000; }
+.graph-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.graph-table th, .graph-table td { padding: 3px 4px; text-align: left; }
+.graph-table th { font-weight: 600; color: var(--muted); font-size: 12px; }
+.graph-table input { width: 64px; padding: 4px 6px; }
+.graph-table tr.selected { background: #e8f0fb; }
+.graph-table td.name { cursor: pointer; }
+.corner-reading { align-items: flex-end; gap: 8px; margin-top: 6px; }
+.corner-reading input { width: 96px; }

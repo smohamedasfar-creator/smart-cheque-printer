@@ -1,3 +1,4 @@
+import { graphSvg } from './graph';
 import type { ChequeLayout, ChequeRecord, FeedRotation, MeasureText, PagePlacement, PrintSettings, RenderItem, TextItem } from './types';
 
 const A4 = { width: 210, height: 297 };
@@ -56,6 +57,8 @@ export interface PrintHtmlOptions {
   marks?: boolean;
   /** Calibration dots in page millimetres (not turned with the cheque), for the scan-to-calibrate test print. */
   pageDots?: Array<{ x: number; y: number; size: number }>;
+  /** Graph paper over the cheque, counted from its bottom-left corner: read the numbers on the paper's corner. */
+  graph?: boolean;
 }
 
 /** How far in from the cheque edges the corner marks sit: inside the area every printer can reach. */
@@ -142,7 +145,7 @@ svg { position: absolute; left: 0; top: 0; overflow: visible; }
 <div class="page">
 <div class="cheque" style="left:${round(g.originX)}mm;top:${round(g.originY)}mm;width:${w}mm;height:${h}mm;transform:${leafTransform(g.rotation, g.chequeWidth, g.chequeHeight, 'mm')}">
 ${body.join('\n')}
-<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}${opts.marks ? alignmentMarks(g.chequeWidth, g.chequeHeight).svg : ''}</svg>
+<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}${opts.marks ? alignmentMarks(g.chequeWidth, g.chequeHeight).svg : ''}${opts.graph ? graphSvg(g.chequeWidth, g.chequeHeight) : ''}</svg>
 </div>
 ${opts.pageDots?.length ? `<svg class="page-dots" width="${round(g.pageWidth)}mm" height="${round(g.pageHeight)}mm" viewBox="0 0 ${round(g.pageWidth)} ${round(g.pageHeight)}">${opts.pageDots.map(d => `<circle cx="${round(d.x)}" cy="${round(d.y)}" r="${round(d.size / 2)}" fill="#000"/>`).join('')}</svg>` : ''}
 </div>

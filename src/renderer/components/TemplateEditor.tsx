@@ -4,8 +4,9 @@ import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
 import { applyBank, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
-import { editableFields, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
-import type { ChequeLayout, ChequeTemplate, CrossingOption, PrintSettings } from '../../shared/types';
+import { editableFields, moveDate, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
+import { graphStart, withGraphStart, type GraphPoint } from '../../shared/graph';
+import { CROSSING_LABELS, type ChequeLayout, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { chequeImageDataUrl, detectAsync, loadUpload, type LoadedUpload } from '../upload';
 import { ChequeCanvas } from './ChequeCanvas';
@@ -15,6 +16,34 @@ export interface Draft {
   name: string;
   layout: ChequeLayout;
   image: string | null;
+}
+
+interface GraphRow {
+  key: FieldKey;
+  label: string;
+  start: GraphPoint & { length: number };
+  /** Digit boxes keep their spacing: only the whole date moves. */
+  fixedLength?: boolean;
+}
+
+/** One row per field: where it starts on the graph (mm from the bottom-left corner) and how long its line is. */
+function graphRows(L: ChequeLayout): GraphRow[] {
+  const H = L.chequeHeight;
+  const rows: GraphRow[] = [];
+  if (L.date.mode === 'line') rows.push({ key: 'date', label: 'Date', start: graphStart(L.date.box, H) });
+  else {
+    const first = L.date.boxes[0];
+    const last = L.date.boxes[L.date.boxes.length - 1];
+    rows.push({ key: 'date', label: 'Date (8 boxes)', start: { ...graphStart(first, H), length: tenth(last.x + last.width - first.x) }, fixedLength: true });
+  }
+  rows.push(
+    { key: 'payee', label: 'Payee', start: graphStart(L.payee, H) },
+    { key: 'words1', label: 'Words line 1', start: graphStart(L.words1, H) },
+    { key: 'words2', label: 'Words line 2', start: graphStart(L.words2, H) },
+    { key: 'amount', label: 'Amount', start: graphStart(L.amount, H) },
+    { key: 'bearer', label: 'Or bearer strike', start: graphStart(L.bearerStrike, H) },
+  );
+  return rows;
 }
 
 /** Millimetres shown to one decimal, as typed. */
@@ -44,6 +73,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
   const [widthInput, setWidthInput] = useState('');
   /** A recognised bank and the layout detection found, to go back to it. */
   const [bank, setBank] = useState<{ bank: BankTemplate; detected: ChequeLayout } | null>(null);
+  const [libraryApplied, setLibraryApplied] = useState(false);
   const [sample, setSample] = useState({ payee: 'Sample Trading LLC', amount: '12,345.50', date: new Date().toLocaleDateString('en-CA'), crossing: 'ac-payee-bearer' as CrossingOption });
   const fileInput = useRef<HTMLInputElement>(null);
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
@@ -125,6 +155,20 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
   };
 
   const setLayout = (layout: ChequeLayout) => setDraft(d => ({ ...d, layout }));
+  /** A typed X, Y or length from the graph table. */
+  const setGraph = (key: FieldKey, next: Partial<GraphPoint & { length: number }>) => {
+    if (Object.values(next).some(v => !Number.isFinite(v))) return;
+    const L = draft.layout;
+    if (key === 'date' && L.date.mode === 'digits') {
+      const now = graphRows(L)[0].start;
+      setLayout(moveDate(L, (next.x ?? now.x) - now.x, -((next.y ?? now.y) - now.y)));
+      return;
+    }
+    const box = editableFields(L).find(f => f.key === key)?.box;
+    if (box) setLayout(updateField(L, key, withGraphStart(box, L.chequeHeight, next)));
+  };
+  // An existing FAB or RAKBANK design can take the bank library's measured writing spaces in one click.
+  const libraryMatch = !detection && !isNew && !libraryApplied ? matchBank(draft.layout) : null;
   const field = selected ? editableFields(draft.layout).find(f => f.key === selected) : undefined;
   const setBox = (key: 'x' | 'y' | 'width' | 'height', value: number) =>
     field && Number.isFinite(value) && setLayout(updateField(draft.layout, field.key, { ...field.box, [key]: value }));
@@ -168,6 +212,12 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
             {detection.guessed.map(f => <span key={f} className="chip warn">? {FIELD_NAMES[f] ?? f} — please check</span>)}
           </div>
         )}
+        {libraryMatch && (
+          <p className="hint">
+            This is a {libraryMatch.name} cheque.{' '}
+            <button type="button" className="primary" onClick={() => { setLayout(applyBank(libraryMatch, draft.layout)); setLibraryApplied(true); }}>Use the {libraryMatch.name} layout from the bank library</button>
+          </p>
+        )}
         {bank && (
           <p className="hint">
             The writing spaces come from the {bank.bank.name} cheque in the bank library.{' '}
@@ -195,6 +245,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
                 selected={selected}
                 onSelect={setSelected}
                 onChange={setLayout}
+                graph
               />
             </div>
             <p className="hint">Drag a box to move it, drag its corner to resize. Arrow keys move the selected box 0.5 mm (Shift: 0.1 mm). The cheque image is never printed.</p>
@@ -212,26 +263,34 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
             <label>Date<input type="date" value={sample.date} onChange={e => setSample(s => ({ ...s, date: e.target.value }))} /></label>
           </div>
 
-          <h3>Selected field</h3>
-          {!field && <p className="hint">Click a box on the cheque to adjust it.</p>}
+          <h3>Where each field starts</h3>
+          <p className="hint">In mm from the cheque's bottom-left corner (0, 0): X across, Y up to the writing line. Length is where the line ends; longer text moves to the next line or gets smaller.</p>
+          <table className="graph-table">
+            <thead><tr><th>Field</th><th>X</th><th>Y</th><th>Length</th></tr></thead>
+            <tbody>
+              {graphRows(draft.layout).map(row => (
+                <tr key={row.key} className={selected === row.key ? 'selected' : ''}>
+                  <td className="name" onClick={() => setSelected(row.key)}>{row.label}</td>
+                  <td><input type="number" step="0.5" value={row.start.x} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { x: Number(e.target.value) })} /></td>
+                  <td><input type="number" step="0.5" value={row.start.y} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { y: Number(e.target.value) })} /></td>
+                  <td>{row.fixedLength ? <span className="hint">{row.start.length}</span> : <input type="number" step="0.5" value={row.start.length} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { length: Number(e.target.value) })} />}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           {field && (
-            <>
-              <strong>{field.label}</strong>
-              <label>Top (mm)<input type="number" step="0.1" value={tenth(field.box.y)} onChange={e => setBox('y', Number(e.target.value))} /></label>
-              <div className="row">
-                <label>Line starts at (mm)<input type="number" step="0.1" value={tenth(field.box.x)} onChange={e => setBox('x', Number(e.target.value))} /></label>
-                <label>Line ends at (mm)<input type="number" step="0.1" value={Math.round((field.box.x + field.box.width) * 10) / 10} onChange={e => setBox('width', Number(e.target.value) - field.box.x)} /></label>
-              </div>
-              <p className="hint">Text wraps to the next line at "Line ends at". Set it to where the printed line ends on the cheque.</p>
-              <div className="row">
-                <label>Width (mm)<input type="number" step="0.1" value={tenth(field.box.width)} onChange={e => setBox('width', Number(e.target.value))} /></label>
-                <label>Height (mm)<input type="number" step="0.1" value={tenth(field.box.height)} onChange={e => setBox('height', Number(e.target.value))} /></label>
-              </div>
-              <p className="hint">Text size and font are set once for all cheques in Settings.</p>
-            </>
+            <label>Height of the {field.label.toLowerCase()} space (mm)<input type="number" step="0.5" value={tenth(field.box.height)} onChange={e => setBox('height', Number(e.target.value))} /></label>
           )}
+          <p className="hint">Text size and font are set once for all cheques in Settings.</p>
 
           <h3>Layout options</h3>
+          <label>
+            Crossing printed by default
+            <select value={draft.layout.defaultCrossing ?? 'ac-payee-bearer'} onChange={e => setLayout({ ...draft.layout, defaultCrossing: e.target.value as CrossingOption })}>
+              {Object.entries(CROSSING_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <p className="hint">If the cheque already has A/C PAYEE printed on it, choose the "Or Bearer" strike only, so it is not printed twice.</p>
           <button onClick={() => { setSelected(null); setLayout(toggleDateMode(draft.layout)); }}>
             {draft.layout.date.mode === 'line' ? 'Date has 8 digit boxes' : 'Date is written on a line'}
           </button>

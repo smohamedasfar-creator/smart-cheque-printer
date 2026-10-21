@@ -5,6 +5,7 @@ export type CrossingOption =
   | 'ac-payee-not-negotiable-bearer'
   | 'ac-payee'
   | 'cross-only'
+  | 'bearer-only'
   | 'none';
 
 export const CROSSING_LABELS: Record<CrossingOption, string> = {
@@ -12,6 +13,7 @@ export const CROSSING_LABELS: Record<CrossingOption, string> = {
   'ac-payee-not-negotiable-bearer': 'Cross A/C Payee + Not Negotiable + Strike "Or Bearer"',
   'ac-payee': 'Cross A/C Payee',
   'cross-only': 'Cross Only',
+  'bearer-only': 'Strike "Or Bearer" only (A/C PAYEE already printed on the cheque)',
   none: 'No Crossing',
 };
 
@@ -53,6 +55,8 @@ export interface ChequeLayout {
   acPayee: FieldBox;
   bearerStrike: FieldBox & { text: string };
   crossingLines: LineSegment[];
+  /** The crossing printed by default for this cheque, e.g. only the "or bearer" strike when it already says A/C PAYEE. */
+  defaultCrossing?: CrossingOption;
 }
 
 export interface ChequeTemplate {

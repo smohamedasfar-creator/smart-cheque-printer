@@ -139,6 +139,8 @@ function payeeItem(box: FieldBox, payee: string, measure: MeasureText, warnings:
 
 function crossingItems(layout: ChequeLayout, crossing: CrossingOption): RenderItem[] {
   if (crossing === 'none') return [];
+  // The cheque already carries A/C PAYEE: strike only the "or bearer" words, never print it a second time.
+  if (crossing === 'bearer-only') return [text('bearer', layout.bearerStrike.text, layout.bearerStrike)];
   const items: RenderItem[] = layout.crossingLines.map(l => ({ kind: 'line', ...l }));
   if (crossing === 'ac-payee' || crossing === 'ac-payee-bearer') {
     items.push(text('ac-payee', 'A/C PAYEE ONLY', layout.acPayee));

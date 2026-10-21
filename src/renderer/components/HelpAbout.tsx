@@ -8,11 +8,11 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Check the layout',
-    'Each field is shown on your cheque with sample text. Drag a box to move it or its corner to resize it. "Line ends at" decides where text wraps to the next line. Then enter the cheque book name and last cheque number.',
+    'The cheque is shown on graph paper with sample text, (0, 0) at its bottom-left corner. Each field has an X, Y and length in mm: type them or drag the boxes. Choose the crossing for this cheque (only the "or bearer" strike if A/C PAYEE is already printed on it). Then enter the cheque book name and last cheque number.',
   ],
   [
     'Set up printing once',
-    'In the cheque book details, load a photocopy of the cheque (cut to size) as the picture shows and press Print test page. Scan the printed cheque and choose the scan. The app finds where your printer put the ink and moves the print to match, whichever tray you use and whichever way the cheque went in.',
+    'In the cheque book details, cut plain paper to the cheque size (or use a photocopy), load it as the picture shows and press Print graph. On the printed paper, read which graph point sits on its bottom-left corner: the red number is X, the blue number is Y (count the small mm lines from the nearest numbered line). Type both and press Apply. Then Test print on a photocopy to check.'
   ],
   [
     'Write and print',
@@ -26,7 +26,7 @@ const STEPS: Array<[string, string]> = [
 
 const TIPS = [
   'Load every cheque the same way as the picture shows, with the paper guide just touching it.',
-  'If a cheque prints slightly off later, print the test page again and choose its scan: the app corrects itself.',
+  'If a cheque prints slightly off later, print the graph again and type the new corner numbers.',
   'If the app says the printer printed the page smaller or bigger, set the printer to 100% (turn off "Fit to page").',
   'Choose the text size and font once in Settings. A long payee name stays on one line and gets smaller (not below 8 pt) so it never runs past its line.',
   'Back up your data regularly (Settings → Your data). The backup file holds your cheque books, payees and history.',
