@@ -54,6 +54,8 @@ export interface PrintHtmlOptions {
   guides?: boolean;
   /** Alignment test: crosshairs at the corners and centre with their distances, to tell an offset from a scaling error. */
   marks?: boolean;
+  /** Calibration dots in page millimetres (not turned with the cheque), for the scan-to-calibrate test print. */
+  pageDots?: Array<{ x: number; y: number; size: number }>;
 }
 
 /** How far in from the cheque edges the corner marks sit: inside the area every printer can reach. */
@@ -142,6 +144,7 @@ svg { position: absolute; left: 0; top: 0; overflow: visible; }
 ${body.join('\n')}
 <svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">${lines.join('')}${opts.marks ? alignmentMarks(g.chequeWidth, g.chequeHeight).svg : ''}</svg>
 </div>
+${opts.pageDots?.length ? `<svg class="page-dots" width="${round(g.pageWidth)}mm" height="${round(g.pageHeight)}mm" viewBox="0 0 ${round(g.pageWidth)} ${round(g.pageHeight)}">${opts.pageDots.map(d => `<circle cx="${round(d.x)}" cy="${round(d.y)}" r="${round(d.size / 2)}" fill="#000"/>`).join('')}</svg>` : ''}
 </div>
 </body></html>`;
 }

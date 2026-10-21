@@ -22,6 +22,7 @@ import {
   type TrayView,
 } from '../src/shared/print';
 import { blankLayout } from '../src/shared/layoutDefaults';
+import { calibrationPattern, calibrationResult, DOT_MM, locateCheque } from '../src/shared/detect/calibrate';
 import { renderCheque } from '../src/shared/chequeRender';
 import { DEFAULT_SETTINGS, type ChequeLayout, type FeedRotation, type TextItem } from '../src/shared/types';
 
@@ -265,6 +266,44 @@ describe('virtual printer: fixing a test print by dragging', () => {
         }
       }
     }
+  });
+
+  test('scanning one test print finds where the cheque sits in every tray, direction, size and position', () => {
+    const left: string[] = [];
+    for (const { tray, turn, w, h, s } of cases) {
+      if (s === 'odd') continue;
+      const layout = layoutOf(w, h);
+      const shown = spot(layout, tray, turn, s);
+      const p1 = trayToPage(layout, tray, shown);
+      // Loaded as shown, against the opposite side, the other way round, and with a printer that prints off.
+      const opposite = alignTrayView(layout, tray, shown, s === 'left' ? 'right' : 'left');
+      const flippedView = { ...shown, turn: (((shown.turn + 180) % 360) as FeedRotation) };
+      for (const [actual, error, label] of [[shown, { x: 0, y: 0 }, 'as shown'], [opposite, { x: 0, y: 0 }, 'other side'], [flippedView, { x: 0, y: 0 }, 'other way round'], [shown, { x: 3.5, y: -4 }, 'printer off']] as Array<[TrayView, Pt, string]>) {
+        // Where a point of the printed page lands on the cheque: invert the (affine) physical mapping.
+        const sheet = sheetFor(layout, actual.turn);
+        const f = (q: Pt) => trayToPrinter(tray, sheet, seenInTray(layout, tray, actual, q));
+        const o = f({ x: 0, y: 0 }), ex = f({ x: 1, y: 0 }), ey = f({ x: 0, y: 1 });
+        const [a, b, c2, d2] = [ex.x - o.x, ey.x - o.x, ex.y - o.y, ey.y - o.y];
+        const toCheque = (p: Pt) => {
+          const [rx, ry] = [p.x - o.x, p.y - o.y];
+          const det = a * d2 - b * c2;
+          return { x: (d2 * rx - b * ry) / det, y: (a * ry - c2 * rx) / det };
+        };
+        // What the scan shows: the dots that landed fully on the cheque.
+        const seen = calibrationPattern(layout, p1)
+          .map(d => ({ ...toCheque({ x: d.x + error.x, y: d.y + error.y }), large: d.size === DOT_MM.large, size: d.size }))
+          .filter(p => p.x > p.size && p.y > p.size && p.x < w - p.size && p.y < h - p.size);
+        const name = `${tray} ${turn} ${w}x${h} ${s} ${label}`;
+        const loc = locateCheque(seen, layout, p1);
+        const fix = loc && calibrationResult(p1, loc);
+        if (!fix?.ok || !fix.placement) { left.push(`${name}: not found (${seen.length} dots on the cheque)`); continue; }
+        for (const c of probes(layout)) {
+          const now = landsOnCheque(layout, tray, actual, fix.placement, error, c);
+          if (!near(now, c, 0.15)) { left.push(`${name}: still ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
+        }
+      }
+    }
+    expect(left.slice(0, 6)).toEqual([]);
   });
 });
 

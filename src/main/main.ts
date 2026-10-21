@@ -4,6 +4,7 @@ import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { APP_LINKS, resolveAppLink, type AppLink } from '../shared/appLinks';
 import { buildCalibrationHtml, buildPrintHtml, pageGeometry } from '../shared/print';
+import { calibrationPattern } from '../shared/detect/calibrate';
 import type { PrintJob } from '../preload/api';
 import { createStore, type Store } from './store';
 
@@ -31,6 +32,10 @@ async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }>
     fontFamily: job.settings.fontFamily,
     guides: job.testPrint,
     marks: job.marks === true,
+    // The scan-to-calibrate test print: dot rows across the page around where the cheque is expected.
+    pageDots: job.calibrate && job.placement && job.placement.rotation !== null && job.placement.x !== null && job.placement.y !== null
+      ? calibrationPattern(layout, { rotation: job.placement.rotation, x: job.placement.x, y: job.placement.y })
+      : undefined,
   });
   return printHtml(html, geometry.pageWidth, geometry.pageHeight, job.settings.printerName);
 }

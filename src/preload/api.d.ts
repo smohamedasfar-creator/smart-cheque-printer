@@ -19,6 +19,8 @@ export interface PrintJob {
   testPrint: boolean;
   /** Adds crosshairs at the cheque's corners and centre with their distances (alignment test). */
   marks?: boolean;
+  /** Adds the calibration dot rows; scan the printed test so the app can find where the cheque sits. */
+  calibrate?: boolean;
   /** The cheque book's own feed direction and page position, when set. */
   placement?: PagePlacement;
 }
