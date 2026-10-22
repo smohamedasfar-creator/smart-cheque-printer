@@ -54,9 +54,11 @@ describe('loadingSteps', () => {
     expect(steps).toMatch(/touches the cheque/i);
   });
 
-  test('front drawer: printed side down, chosen end towards the printer', () => {
+  test('front drawer: face up with the chosen end towards the printer, then turned over sideways', () => {
     const steps = loadingSteps(fab, 'front', placed('front', 0, 'centre', fab).view, 0).join(' ');
-    expect(steps).toMatch(/printed side down/i);
+    expect(steps).toMatch(/printed side up, with the top edge towards the printer/i);
+    expect(steps).toMatch(/turn it over sideways/i);
+    expect(steps).toMatch(/printed side faces down/i);
     expect(steps).toMatch(/top edge towards the printer/i);
     expect(steps).toMatch(/both guides/i);
     expect(steps).toMatch(/drawer/i);

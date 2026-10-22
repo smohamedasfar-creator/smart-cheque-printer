@@ -58,10 +58,10 @@ export function loadingSteps(layout: ChequeLayout, tray: TrayKind, view: TrayVie
   if (tray === 'front') {
     return [
       'Pull out the paper drawer, slide its guides fully open and take out any other paper.',
-      `Turn the cheque printed side down, with the ${end} towards the printer.`,
+      `Hold the cheque printed side up, with the ${end} towards the printer.`,
+      `Turn it over sideways, like turning a page, so the printed side faces down. The ${end} still points to the printer.`,
       `Lay it flat ${where}, pushed fully in.`,
-      guide,
-      'Close the drawer gently.',
+      `${guide} Close the drawer gently.`,
     ];
   }
   return [

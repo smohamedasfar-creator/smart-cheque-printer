@@ -31,6 +31,7 @@ const STEPS: Array<[string, string]> = [
 
 const TIPS = [
   'Load every cheque the same way as the picture shows, with the paper guides just touching it.',
+  'Back tray: stand the cheque printed side facing you, with the end shown in the picture going in first. Front drawer: hold the cheque printed side up with that end towards the printer, turn it over sideways like a page, and lay it flat printed side down; the picture then shows the back of the cheque. Press Show me how to see it moving.',
   'If every cheque prints off by the same amount, recalibrate the printer (Settings). If only one cheque design is off, fix its fields with the graph. Keep the fields on the lines of the cheque: the printer calibration, not the fields, makes up for the printer.',
   'If the app says the printer printed the page smaller or bigger, set the printer to 100% (turn off "Fit to page").',
   'Choose the text size and font once in Settings. A long payee name stays on one line and gets smaller (not below 8 pt) so it never runs past its line.',

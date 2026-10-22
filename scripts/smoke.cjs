@@ -34,11 +34,12 @@ const js = (win, code) => win.webContents.executeJavaScript(code);
 
 /** Replays the loading animation and captures the tray area at each of its five steps (set SMOKE_FRAMES=1). */
 async function frames(win, name) {
+  await js(win, "document.querySelector('.tray').scrollIntoView({ block: 'start' })");
   await click(win, '▶ Show me how');
   const start = Date.now();
   for (const [i, at] of [600, 1800, 3000, 4300, 6200].entries()) {
     await wait(Math.max(0, at - (Date.now() - start)));
-    const r = await js(win, "(() => { const t = document.querySelector('.tray').getBoundingClientRect(); return { x: Math.max(0, Math.floor(t.left)), y: Math.max(0, Math.floor(t.top)), width: Math.ceil(t.width), height: Math.ceil(t.height) }; })()");
+    const r = await js(win, "(() => { const t = document.querySelector('.tray').getBoundingClientRect(); const x = Math.max(0, Math.floor(t.left)), y = Math.max(0, Math.floor(t.top)); return { x, y, width: Math.min(Math.ceil(t.width), innerWidth - x), height: Math.min(Math.ceil(t.height), innerHeight - y) }; })()");
     fs.writeFileSync(path.join(outDir, `${name}-${i + 1}.png`), (await win.webContents.capturePage(r)).toPNG());
   }
 }

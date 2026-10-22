@@ -192,10 +192,15 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray-sheet { position: relative; background: #fff; border: 1px solid #b8c2d3; box-shadow: 0 0 0 10px #3a3f47, 0 4px 14px rgb(0 0 0 / 25%); border-radius: 2px; margin: 10px; }
 .tray-cheque { position: absolute; cursor: grab; touch-action: none; z-index: 1; }
 .tray-cheque.still { cursor: default; }
-.tray-cheque-turn { position: absolute; inset: 0; transform-origin: center; transform: scaleX(var(--mirror)); outline: 2px solid var(--primary); }
+.tray-cheque-turn { position: absolute; inset: 0; transform-origin: center; outline: 2px solid var(--primary); transform-style: preserve-3d; }
+/* Front drawer: turned over (printed side down), so the back of the cheque shows. */
+.tray-cheque-turn.turn-over { transform: rotateY(180deg); }
+.tray-front .tray-cheque { perspective: 700px; }
+.tray-face { position: absolute; inset: 0; backface-visibility: hidden; overflow: hidden; }
+.tray-face-back { transform: rotateY(180deg); background: #f7f6f0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; font-size: 11px; line-height: 1.3; text-align: center; color: var(--muted); }
+.tray-back-end { font-weight: 700; color: var(--primary); }
 .tray-cheque:active { cursor: grabbing; }
 .tray-cheque-image { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #e6f1f7 center / 100% 100% no-repeat; pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
-.tray-front .tray-cheque-image { opacity: 0.75; }
 .tray-edge { position: absolute; left: -10px; right: -10px; height: 4px; background: var(--primary); }
 .tray-edge-bottom { bottom: -14px; }
 .tray-edge-top { top: -14px; }
@@ -209,10 +214,13 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray-animate .tray-guide { animation: scp-guide 6s ease-in-out both; }
 .tray-animate .tray-cheque { animation: scp-cheque-in 6s ease-in-out both; }
 .tray-animate .tray-cheque-turn { animation: scp-cheque-turn 6s ease-in-out both; }
+.tray-animate .tray-cheque-turn.turn-over { animation: scp-cheque-turn-over 6s ease-in-out both; }
 .tray-steps li { animation: scp-step 6s linear; }
 @keyframes scp-guide { 0% { transform: translateX(var(--g-to)); } 15%, 60% { transform: translateX(var(--g-from)); } 78%, 100% { transform: translateX(var(--g-to)); } }
 @keyframes scp-cheque-in { 0%, 40% { transform: translateY(var(--from-y)); } 58%, 100% { transform: translateY(0); } }
-@keyframes scp-cheque-turn { 0%, 20% { transform: rotate(var(--turn-from)) scaleX(1); } 37%, 100% { transform: rotate(0deg) scaleX(var(--mirror)); } }
+@keyframes scp-cheque-turn { 0%, 20% { transform: rotate(var(--turn-from)); } 37%, 100% { transform: rotate(0deg); } }
+/* Front drawer: turn to the right end first, then over sideways like a page, then in. */
+@keyframes scp-cheque-turn-over { 0%, 18% { transform: rotate(var(--turn-from)) rotateY(0deg); } 30% { transform: rotate(0deg) rotateY(0deg); } 42%, 100% { transform: rotate(0deg) rotateY(180deg); } }
 @keyframes scp-step { 0%, 19.9% { background: #e8f0fb; color: var(--primary); font-weight: 600; } 20%, 100% { background: transparent; color: inherit; font-weight: 400; } }
 @media (prefers-reduced-motion: reduce) {
   .tray-animate .tray-guide, .tray-animate .tray-cheque, .tray-animate .tray-cheque-turn, .tray-steps li { animation: none; }

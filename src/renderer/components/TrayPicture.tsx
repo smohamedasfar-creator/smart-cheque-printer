@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { feedNotes, guideSide, loadingSteps } from '../../shared/loading';
-import { alignTrayView, footprint, leafTransform, sheetFor, TRAY_KINDS, type TrayKind, type TrayView } from '../../shared/print';
+import { alignTrayView, footprint, LEADING_EDGE, leafTransform, sheetFor, TRAY_KINDS, type TrayKind, type TrayView } from '../../shared/print';
 import type { ChequeLayout, FeedRotation } from '../../shared/types';
 
 interface Props {
@@ -21,7 +21,7 @@ const START_GAP_PX = 8;
 
 const CAPTIONS: Record<TrayKind, string> = {
   rear: 'Back tray, seen from the front of the printer. The cheque faces you.',
-  front: 'Front drawer, seen from above. The printed side faces down, so the picture shows it as if the paper were glass.',
+  front: 'Front drawer, seen from above. The cheque lies printed side down, so you see its back.',
   manual: 'Manual feed slot, seen from above. The printed side faces up.',
 };
 
@@ -64,7 +64,6 @@ export function TrayPicture({ layout, image, tray, view, onChange, scale = 1.25,
     // The cheque starts inside the picture, at the end away from the printer, so its turn is visible.
     '--from-y': `${inAtBottom ? START_GAP_PX - px(view.v) : px(sheet.height - footH - view.v) - START_GAP_PX}px`,
     '--turn-from': `${-view.turn}deg`,
-    '--mirror': model.mirrored ? -1 : 1,
   } as CSSProperties;
   // A guide closes from each side the cheque does not rest against.
   const guides: Array<{ from: number; to: number }> = [];
@@ -86,18 +85,27 @@ export function TrayPicture({ layout, image, tray, view, onChange, scale = 1.25,
           onPointerUp={() => (drag.current = null)}
           title={interactive ? 'Slide the cheque sideways to where it sits in the tray' : undefined}
         >
-          <div className="tray-cheque-turn">
-            <div
-              className="tray-cheque-image"
-              style={{
-                width: px(layout.chequeWidth),
-                height: px(layout.chequeHeight),
-                backgroundImage: image ? `url(${image})` : undefined,
-                transform: leafTransform(view.turn, px(layout.chequeWidth), px(layout.chequeHeight), 'px'),
-              }}
-            >
-              {!image && <span>CHEQUE · logo end ←</span>}
+          {/* Printed side down: the cheque is shown face up the right way round, then turned over to show its back. */}
+          <div className={model.mirrored ? 'tray-cheque-turn turn-over' : 'tray-cheque-turn'}>
+            <div className="tray-face tray-face-front">
+              <div
+                className="tray-cheque-image"
+                style={{
+                  width: px(layout.chequeWidth),
+                  height: px(layout.chequeHeight),
+                  backgroundImage: image ? `url(${image})` : undefined,
+                  transform: leafTransform(view.turn, px(layout.chequeWidth), px(layout.chequeHeight), 'px'),
+                }}
+              >
+                {!image && <span>CHEQUE · logo end ←</span>}
+              </div>
             </div>
+            {model.mirrored && (
+              <div className="tray-face tray-face-back">
+                <span className="tray-back-end">▲ {LEADING_EDGE[rotation].replace(/ goes in first$/, '')} towards the printer</span>
+                <span>Back of the cheque · printed side down</span>
+              </div>
+            )}
           </div>
         </div>
         <span className={`tray-edge tray-edge-${inAtBottom ? 'bottom' : 'top'}`} />
