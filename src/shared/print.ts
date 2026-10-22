@@ -238,6 +238,9 @@ export function chequesToCsv(rows: ChequeRecord[], accountName: (id: number) => 
  *  manual: paper lies on a manual feed slot or bypass tray, printed side up, far edge goes in first. */
 export type TrayKind = 'rear' | 'front' | 'manual';
 
+/** How a tray handles the paper: its kind, or 'front-up' for a front drawer whose printer prints on the side facing up. */
+export type TrayGeometry = TrayKind | 'front-up';
+
 interface TrayModel {
   /** The page's left-right and top-bottom are reversed compared with the tray picture. */
   flipX: boolean;
@@ -250,10 +253,12 @@ interface TrayModel {
 
 const turnBy = (r: number, by: number) => ((((r + by) % 360) + 360) % 360) as FeedRotation;
 
-export const TRAY_KINDS: Record<TrayKind, TrayModel> = {
+export const TRAY_KINDS: Record<TrayGeometry, TrayModel> = {
   rear: { flipX: true, flipY: true, mirrored: false, turnFor: r => turnBy(r, 180) },
   front: { flipX: true, flipY: false, mirrored: true, turnFor: r => r },
   manual: { flipX: false, flipY: false, mirrored: false, turnFor: r => r },
+  // Lies flat printed side up, far edge goes in: like the manual slot.
+  'front-up': { flipX: false, flipY: false, mirrored: false, turnFor: r => r },
 };
 
 /** How the cheque looks in the tray picture: its turn and where its footprint's top-left sits (mm on the sheet picture). */
@@ -316,7 +321,7 @@ export function chequePointOnPage(layout: Pick<ChequeLayout, 'chequeWidth' | 'ch
 const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
 
 /** Converts what the user showed on the tray picture into the page placement. */
-export function trayToPage(layout: ChequeLayout, tray: TrayKind, view: TrayView): Placement {
+export function trayToPage(layout: ChequeLayout, tray: TrayGeometry, view: TrayView): Placement {
   const m = TRAY_KINDS[tray];
   const sheet = sheetFor(layout, view.turn);
   const [footW, footH] = footprint(layout, view.turn);
@@ -328,7 +333,7 @@ export function trayToPage(layout: ChequeLayout, tray: TrayKind, view: TrayView)
 }
 
 /** The tray picture for a saved placement (inverse of trayToPage). */
-export function pageToTray(layout: ChequeLayout, tray: TrayKind, p: Placement): TrayView {
+export function pageToTray(layout: ChequeLayout, tray: TrayGeometry, p: Placement): TrayView {
   const m = TRAY_KINDS[tray];
   const turn = m.flipY ? turnBy(p.rotation, 180) : p.rotation;
   const sheet = sheetFor(layout, turn);
@@ -341,14 +346,14 @@ export function pageToTray(layout: ChequeLayout, tray: TrayKind, p: Placement): 
 }
 
 /** Starting picture: cheque pushed fully into the tray and centred. */
-export function defaultTrayView(layout: ChequeLayout, tray: TrayKind, turn: FeedRotation): TrayView {
+export function defaultTrayView(layout: ChequeLayout, tray: TrayGeometry, turn: FeedRotation): TrayView {
   const sheet = sheetFor(layout, turn);
   const [footW, footH] = footprint(layout, turn);
   return { turn, u: (sheet.width - footW) / 2, v: TRAY_KINDS[tray].flipY ? sheet.height - footH : 0 };
 }
 
 /** Lines the cheque up with the tray's left guide, its centre or its right guide, as seen on the tray picture. */
-export function alignTrayView(layout: ChequeLayout, tray: TrayKind, view: TrayView, side: 'left' | 'centre' | 'right'): TrayView {
+export function alignTrayView(layout: ChequeLayout, tray: TrayGeometry, view: TrayView, side: 'left' | 'centre' | 'right'): TrayView {
   const sheet = sheetFor(layout, view.turn);
   const [footW] = footprint(layout, view.turn);
   const room = sheet.width - footW;

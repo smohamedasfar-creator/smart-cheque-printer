@@ -420,6 +420,37 @@ async function run(win) {
   await click(win, 'Save settings');
   await wait(300);
   check('settings: any reminder days', JSON.stringify((await js(win, 'window.chequeApi.getSettings()')).reminderDays), JSON.stringify([30, 7, 1]));
+  // Which side the front tray prints on, and the check before printing.
+  const loadCheck = () => js(win, "[...document.querySelectorAll('.load-check dd')].map(d => d.textContent).join(' | ')");
+  await click(win, 'Write Cheque');
+  await waitFor(win, "document.querySelector('input[list=\"payees\"]')");
+  await setField(win, 'input[list="payees"]', 'Acme Gulf Contracting LLC');
+  await setField(win, 'input[inputmode="decimal"]', '1000');
+  await wait(300);
+  await click(win, 'Print cheque');
+  await wait(200);
+  check('write: before printing, how the cheque is loaded (front, face down)', await loadCheck(), 'Front drawer | DOWN, facing the bottom of the drawer | Top edge (horizontal) | Just touching the cheque, not bending it');
+  await shot(win, '5d-load-check');
+  await click(win, 'Cancel');
+  check('write: cancel closes the check without printing', await js(win, "Boolean(document.querySelector('.load-check'))"), false);
+  await click(win, 'Settings');
+  await js(win, "[...document.querySelectorAll('.face-choice label')].find(l => l.textContent.trim().startsWith('Up')).querySelector('input').click()");
+  await wait(300);
+  const faced = await js(win, 'window.chequeApi.getSettings()');
+  check('settings: front tray prints face up', faced.frontTrayFaceUp?.[faced.printerName], true);
+  await click(win, 'Write Cheque');
+  await waitFor(win, "document.querySelector('.tray')");
+  await wait(300);
+  check('write: face-up front tray picture, not turned over', await js(win, "Boolean(document.querySelector('.tray.tray-front-up')) && !document.querySelector('.tray-cheque-turn.turn-over')"), true);
+  await setField(win, 'input[list="payees"]', 'Acme Gulf Contracting LLC');
+  await setField(win, 'input[inputmode="decimal"]', '1000');
+  await wait(300);
+  await click(win, 'Print cheque');
+  await wait(200);
+  check('write: before printing, front tray face up', await loadCheck(), 'Front drawer | UP, facing you | Top edge (horizontal) | Just touching the cheque, not bending it');
+  await click(win, 'Cancel');
+  await click(win, 'Settings');
+
   await js(win, "[...document.querySelectorAll('h2')].find(h => h.textContent === 'Amount and text').scrollIntoView()");
   await shot(win, '8a-settings-text');
   check('font list has installed fonts', await js(win, "document.querySelectorAll('select option').length > 30"), true);

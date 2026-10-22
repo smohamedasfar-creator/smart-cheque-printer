@@ -18,6 +18,7 @@ import {
   trayToPage,
   TRAY_KINDS,
   type Placement,
+  type TrayGeometry,
   type TrayKind,
   type TrayView,
 } from '../src/shared/print';
@@ -56,7 +57,7 @@ function applyCss(css: string, p: Pt): Pt {
 }
 
 /** Where a cheque point appears on the tray picture, in mm (what the user sees when loading the cheque). */
-function seenInTray(layout: ChequeLayout, tray: TrayKind, view: TrayView, c: Pt): Pt {
+function seenInTray(layout: ChequeLayout, tray: TrayGeometry, view: TrayView, c: Pt): Pt {
   const [footW] = footprint(layout, view.turn);
   let q = applyCss(leafTransform(view.turn, layout.chequeWidth, layout.chequeHeight, ''), c);
   // The front drawer is drawn see-through (printed side down), i.e. mirrored inside the cheque's footprint.
@@ -65,7 +66,7 @@ function seenInTray(layout: ChequeLayout, tray: TrayKind, view: TrayView, c: Pt)
 }
 
 /** How the printer sees the sheet: the page's top edge is the edge that goes in first, printed side towards the head. */
-function trayToPrinter(tray: TrayKind, sheet: { width: number; height: number }, p: Pt): Pt {
+function trayToPrinter(tray: TrayGeometry, sheet: { width: number; height: number }, p: Pt): Pt {
   switch (tray) {
     // Standing at the back, printed side facing you, bottom edge goes in: you see the page upside down.
     case 'rear': return { x: sheet.width - p.x, y: sheet.height - p.y };
@@ -73,6 +74,8 @@ function trayToPrinter(tray: TrayKind, sheet: { width: number; height: number },
     case 'front': return { x: sheet.width - p.x, y: p.y };
     // Lying printed side up, far edge goes in: seen from above it is the page as printed.
     case 'manual': return p;
+    // A front drawer whose printer prints on the side facing up: the same.
+    case 'front-up': return p;
   }
 }
 
@@ -90,7 +93,7 @@ function layoutOf(w: number, h: number): ChequeLayout {
   return blankLayout(w, h);
 }
 
-function spot(layout: ChequeLayout, tray: TrayKind, turn: FeedRotation, s: (typeof SPOTS)[number]): TrayView {
+function spot(layout: ChequeLayout, tray: TrayGeometry, turn: FeedRotation, s: (typeof SPOTS)[number]): TrayView {
   const base = defaultTrayView(layout, tray, turn);
   if (s === 'centre') return base;
   if (s === 'odd') return { ...base, u: base.u > 20 ? 17.3 : base.u };
@@ -113,14 +116,14 @@ function printHtml(layout: ChequeLayout, p: Placement): string {
 }
 
 const cases = TRAY_KINDS_LIST().flatMap(tray => TURNS.flatMap(turn => SIZES.flatMap(([w, h]) => SPOTS.map(s => ({ tray, turn, w, h, s })))));
-function TRAY_KINDS_LIST(): TrayKind[] {
-  return Object.keys(TRAY_KINDS) as TrayKind[];
+function TRAY_KINDS_LIST(): TrayGeometry[] {
+  return Object.keys(TRAY_KINDS) as TrayGeometry[];
 }
 
 describe('virtual printer: every tray, direction, size and position', () => {
-  test('covers three kinds of tray', () => {
-    expect(TRAY_KINDS_LIST().sort()).toEqual(['front', 'manual', 'rear']);
-    expect(cases.length).toBe(3 * 4 * SIZES.length * SPOTS.length);
+  test('covers three kinds of tray, and a front tray printing face up', () => {
+    expect(TRAY_KINDS_LIST().sort()).toEqual(['front', 'front-up', 'manual', 'rear']);
+    expect(cases.length).toBe(4 * 4 * SIZES.length * SPOTS.length);
   });
 
   test('ink lands exactly where it belongs on the cheque', () => {
@@ -196,7 +199,7 @@ describe('virtual printer: every tray, direction, size and position', () => {
 
 describe('virtual printer: fixing a test print by dragging', () => {
   /** A printer that puts everything (ex, ey) mm away on its page, and a cheque that really sits at `actual`. */
-  function landsOnCheque(layout: ChequeLayout, tray: TrayKind, actual: TrayView, printed: Placement, error: Pt, c: Pt): Pt {
+  function landsOnCheque(layout: ChequeLayout, tray: TrayGeometry, actual: TrayView, printed: Placement, error: Pt, c: Pt): Pt {
     const sheet = sheetFor(layout, actual.turn);
     const ink = printedAt(printHtml(layout, printed), c);
     const onPage = { x: ink.x + error.x, y: ink.y + error.y };

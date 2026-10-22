@@ -1,5 +1,5 @@
 // How to put the cheque into the printer: the usual tray for a printer, plain-words steps and jam warnings.
-import { footprint, LEADING_EDGE, sheetFor, type TrayKind, type TrayView } from './print';
+import { footprint, LEADING_EDGE, sheetFor, type TrayGeometry, type TrayKind, type TrayView } from './print';
 import type { ChequeLayout, FeedRotation } from './types';
 
 interface TrayRule {
@@ -36,7 +36,7 @@ export function guideSide(layout: ChequeLayout, view: TrayView): 'left' | 'right
 const endName = (rotation: FeedRotation) => LEADING_EDGE[rotation].replace(/ goes in first$/, '').toLowerCase();
 
 /** Step-by-step instructions for loading this cheque the way the saved position expects. */
-export function loadingSteps(layout: ChequeLayout, tray: TrayKind, view: TrayView, rotation: FeedRotation): string[] {
+export function loadingSteps(layout: ChequeLayout, tray: TrayGeometry, view: TrayView, rotation: FeedRotation): string[] {
   const end = endName(rotation);
   const side = guideSide(layout, view);
   const where = { left: 'against the left side', right: 'against the right side', middle: 'in the middle', full: 'so it fills the tray from side to side' }[side];
@@ -53,6 +53,14 @@ export function loadingSteps(layout: ChequeLayout, tray: TrayKind, view: TrayVie
       `Stand it in the back tray ${where}.`,
       guide,
       'Let it rest on the bottom of the tray. Do not push it in; the printer pulls it in.',
+    ];
+  }
+  if (tray === 'front-up') {
+    return [
+      'Pull out the paper drawer, slide its guides fully open and take out any other paper.',
+      `Lay the cheque printed side up, with the ${end} towards the printer. This printer prints on the side facing up: do not turn it over.`,
+      `Put it ${where}, pushed fully in.`,
+      `${guide} Close the drawer gently.`,
     ];
   }
   if (tray === 'front') {
@@ -82,5 +90,25 @@ export function feedNotes(layout: ChequeLayout, rotation: FeedRotation): string[
   if (feedLength >= SHORT_FEED_MM) return [];
   return [
     `Fed this way the cheque is only ${Math.round(feedLength)} mm long in the direction it moves. Some printers jam on paper this short. If it jams, feed it date end first or logo end first instead.`,
+  ];
+}
+
+const TRAY_NAMES: Record<TrayGeometry, string> = { rear: 'Back tray', front: 'Front drawer', 'front-up': 'Front drawer', manual: 'Manual feed slot' };
+
+/** What to check before printing: the tray, which side of the cheque faces up, and which end goes in first. */
+export function loadCheck(tray: TrayGeometry, rotation: FeedRotation): Array<{ label: string; value: string; strong?: boolean }> {
+  const end = endName(rotation);
+  const vertical = rotation === 90 || rotation === 270;
+  const side = {
+    rear: 'Facing you (the cheque stands in the tray)',
+    front: 'DOWN, facing the bottom of the drawer',
+    'front-up': 'UP, facing you',
+    manual: 'UP, facing you',
+  }[tray];
+  return [
+    { label: 'Tray', value: TRAY_NAMES[tray] },
+    { label: 'Printed side', value: side, strong: true },
+    { label: 'Goes in first', value: `${end[0].toUpperCase()}${end.slice(1)} (${vertical ? 'vertical' : 'horizontal'})`, strong: true },
+    { label: 'Guides', value: 'Just touching the cheque, not bending it' },
   ];
 }

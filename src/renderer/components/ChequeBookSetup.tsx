@@ -2,10 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderCheque } from '../../shared/chequeRender';
 import { guessTray } from '../../shared/loading';
-import { correctPlacement, defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayKind } from '../../shared/print';
+import { correctPlacement, defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayGeometry, type TrayKind } from '../../shared/print';
 import type { Account, ChequeLayout, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
-import { trayOffset } from '../../shared/printerCalibration';
+import { trayGeometry, trayOffset } from '../../shared/printerCalibration';
+import { loadCheck } from '../../shared/loading';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { activePositionIndex, adjustPosition, anyPositionSetUp, markActive, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, hasOwnAdjustments, verticalDiffText, withoutOwnAdjustments, withReadyPositions, withShift, type Shift } from '../../shared/positions';
 import { PrintCorrection } from './PrintCorrection';
@@ -53,7 +54,7 @@ function describeShift(s: Shift): string {
 }
 
 /** Cheques go in date end first by default: lengthways they are long enough in the feed direction not to jam. */
-const defaultTurn = (t: TrayKind) => TRAY_KINDS[t].turnFor(270);
+const defaultTurn = (t: TrayGeometry) => TRAY_KINDS[t].turnFor(270);
 
 /** Cheque book details and setting up printing, below the cheque layout on the same screen. */
 export function ChequeBookSetup({ account, layout, image, onLayout, settings, bind }: SetupProps) {
@@ -81,12 +82,14 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
 
+  /** The tray as this printer handles it: the front drawer may print on the side facing up (Settings). */
+  const geo = trayGeometry(tray, settings);
   // The placement printed now: the cheque book's own one, or a centred cheque pushed fully into the chosen tray.
   const placement: Placement =
     draft.pageX !== null && draft.pageY !== null && draft.feedRotation !== null
       ? { rotation: draft.feedRotation, x: draft.pageX, y: draft.pageY }
-      : trayToPage(layout, tray, defaultTrayView(layout, tray, defaultTurn(tray)));
-  const view = pageToTray(layout, tray, placement);
+      : trayToPage(layout, geo, defaultTrayView(layout, geo, defaultTurn(geo)));
+  const view = pageToTray(layout, geo, placement);
   /** Which ready position is being set up; its X / Y moves the whole print on the cheque. */
   const key = positionKeyOf(layout, { tray, rotation: placement.rotation });
   const manual = modeOf(layout) === 'manual';
@@ -108,7 +111,8 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
     setTested(false);
     // A name the app filled in follows the tray; a name the user typed is kept.
     if (!posName.trim() || TRAYS.some(x => x.title === posName)) setPosName(TRAYS.find(x => x.value === t)?.title ?? '');
-    setPlacement(trayToPage(layout, t, defaultTrayView(layout, t, defaultTurn(t))));
+    const g = trayGeometry(t, settings);
+    setPlacement(trayToPage(layout, g, defaultTrayView(layout, g, defaultTurn(g))));
   };
   // Start a new cheque book on the tray its printer usually uses for a single cheque (the user can change it).
   const [printerGuess, setPrinterGuess] = useState<{ name: string; tray: TrayKind; reason: string } | null>(null);
@@ -137,7 +141,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
     setCalibrated(false);
     setMoved({ x: 0, y: 0 });
     setTested(false);
-    setPlacement(trayToPage(layout, tray, defaultTrayView(layout, tray, TRAY_KINDS[tray].turnFor(r))));
+    setPlacement(trayToPage(layout, geo, defaultTrayView(layout, geo, TRAY_KINDS[geo].turnFor(r))));
   };
 
   const current = (): PrintPosition | null => ({ name: posName.trim() || `Position ${draft.positions.length + 1}`, tray, rotation: placement.rotation, x: placement.x, y: placement.y, calibrated: calibrated || tested });
@@ -330,6 +334,9 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
             <button type="button" className="link" onClick={() => { onLayout(withoutOwnAdjustments(layout)); setMessage({ kind: 'ok', text: 'Now printing with the printer calibration only. Test print to check, then Save cheque book.' }); }}>Use only the printer calibration</button>
           </p>
         )}
+        <p className="load-summary">
+          Load it: {loadCheck(geo, placement.rotation).map(c => `${c.label}: ${c.value}`).join(' · ')}
+        </p>
         <p>Load a photocopy of this cheque as the picture shows, then use one of the two options:</p>
         <div className="setup-options">
           <div className="setup-option">
@@ -431,12 +438,12 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
           <TrayPicture
             layout={layout}
             image={image}
-            tray={tray}
+            tray={geo}
             view={view}
             interactive={advanced}
             onChange={v => {
               setCalibrated(false);
-              setPlacement(trayToPage(layout, tray, v));
+              setPlacement(trayToPage(layout, geo, v));
               // Where the cheque sits changed: a correction measured for the old spot no longer applies.
               if (key) onLayout(resetShift(layout, key));
             }}

@@ -2,7 +2,7 @@
 // A4, folding it in half each way and reading the scales at the folds. A fold is exactly in the middle of the paper, so
 // no ruler is needed. The printer shifts every page the same way whatever is printed, so one calibration per tray puts
 // every cheque in place: any bank, any size, horizontal or vertical (turning the cheque turns the shift with it).
-import type { Placement, TrayKind } from './print';
+import type { Placement, TrayGeometry, TrayKind } from './print';
 import type { PrintSettings } from './types';
 
 /** How far the printer puts its print from where it should be on the page, in mm: x to the right, y towards the end of the page. */
@@ -96,4 +96,17 @@ export function buildFoldSheetHtml(trayTitle: string): string {
   ];
   lines.forEach((l, i) => parts.push(text(18, 22 + i * 6, l, i === 0 ? 5 : 3.2, i === 0 ? 'font-weight="bold"' : '')));
   return `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:210mm 297mm;margin:0}html,body{margin:0;padding:0}svg{display:block}</style></head><body><svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">${parts.join('')}</svg></body></html>`;
+}
+
+/** True when the chosen printer's front tray prints on the side facing up (set in Settings; most print facing down). */
+export const frontFacesUp = (settings: Pick<PrintSettings, 'printerName' | 'frontTrayFaceUp'>) => settings.frontTrayFaceUp?.[settings.printerName ?? ''] === true;
+
+/** Settings with the chosen printer's front tray printing on the side facing up (true) or down (false). */
+export function withFrontFaceUp<S extends Pick<PrintSettings, 'printerName' | 'frontTrayFaceUp'>>(settings: S, up: boolean): S {
+  return { ...settings, frontTrayFaceUp: { ...settings.frontTrayFaceUp, [settings.printerName ?? '']: up } };
+}
+
+/** How the chosen printer handles paper in a tray (the front drawer may print on the side facing up). */
+export function trayGeometry(tray: TrayKind, settings: Pick<PrintSettings, 'printerName' | 'frontTrayFaceUp'>): TrayGeometry {
+  return tray === 'front' && frontFacesUp(settings) ? 'front-up' : tray;
 }

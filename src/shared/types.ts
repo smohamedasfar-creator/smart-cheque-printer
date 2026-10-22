@@ -145,6 +145,8 @@ export interface PrintSettings {
    * page (mm, x right, y towards the end of the page). Measured once with the folded A4 sheet.
    */
   printerOffsets?: Record<string, Partial<Record<'rear' | 'front' | 'manual', { x: number; y: number }>>>;
+  /** For each printer (by name): true when its front tray prints on the side facing up (most print on the side facing down). */
+  frontTrayFaceUp?: Record<string, boolean>;
   /** Days before a cheque's date to remind (default 15 and 7). */
   reminderDays?: number[];
   /** Show a Windows notification when a cheque reaches a reminder (default on). */

@@ -1,12 +1,13 @@
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { feedNotes, guideSide, loadingSteps } from '../../shared/loading';
-import { alignTrayView, footprint, LEADING_EDGE, leafTransform, sheetFor, TRAY_KINDS, type TrayKind, type TrayView } from '../../shared/print';
+import { alignTrayView, footprint, LEADING_EDGE, leafTransform, sheetFor, TRAY_KINDS, type TrayGeometry, type TrayView } from '../../shared/print';
 import type { ChequeLayout, FeedRotation } from '../../shared/types';
 
 interface Props {
   layout: ChequeLayout;
   image: string | null;
-  tray: TrayKind;
+  /** The tray as this printer handles it (a front drawer may print on the side facing up). */
+  tray: TrayGeometry;
   view: TrayView;
   onChange?: (view: TrayView) => void;
   /** Screen pixels per millimetre. */
@@ -19,10 +20,11 @@ const snap = (v: number) => Math.round(v * 2) / 2;
 const GUIDE_PX = 7;
 const START_GAP_PX = 8;
 
-const CAPTIONS: Record<TrayKind, string> = {
+const CAPTIONS: Record<TrayGeometry, string> = {
   rear: 'Back tray, seen from the front of the printer. The cheque faces you.',
   front: 'Front drawer, seen from above. The cheque lies printed side down, so you see its back.',
   manual: 'Manual feed slot, seen from above. The printed side faces up.',
+  'front-up': 'Front drawer, seen from above. This printer prints on the side facing up, so the cheque lies printed side up.',
 };
 
 /**

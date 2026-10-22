@@ -8,6 +8,8 @@ import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption
 import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
 import { activePositionIndex } from './ChequeBookSetup';
+import { loadCheck } from '../../shared/loading';
+import { trayGeometry } from '../../shared/printerCalibration';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
 import { WordBreakPicker } from './WordBreakPicker';
@@ -37,6 +39,8 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
   const [wordsBreakAt, setWordsBreakAt] = useState<number | null>(null);
   const [status, setStatus] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Printing waits until the user confirms how the cheque is loaded: a real cheque (false) or a test (true). */
+  const [confirming, setConfirming] = useState<boolean | null>(null);
 
   const account = accounts.find(a => a.id === accountId) ?? accounts[0];
   const template = templates.find(t => t.id === account?.templateId);
@@ -190,7 +194,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
           <button onClick={() => onGoTo('books')}>Set up printing</button>
         </div>
       )}
-      <form className="form" onSubmit={e => { e.preventDefault(); if (!problems.length) print(false); }}>
+      <form className="form" onSubmit={e => { e.preventDefault(); if (!problems.length) setConfirming(false); }}>
         <label>
           Cheque book
           <select value={account.id} onChange={e => setAccountId(Number(e.target.value))}>
@@ -250,8 +254,22 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
         </label>
         <div className="actions">
           <button type="submit" className="primary" disabled={busy || problems.length > 0}>Print cheque</button>
-          <button type="button" disabled={busy || problems.length > 0} onClick={() => print(true)}>Test print on plain paper</button>
+          <button type="button" disabled={busy || problems.length > 0} onClick={() => setConfirming(true)}>Test print on plain paper</button>
         </div>
+        {confirming !== null && template && placement.rotation !== null && (
+          <div className="load-check" role="alertdialog" aria-label="Check how the cheque is loaded">
+            <strong>Before printing, check the {confirming ? 'paper' : 'cheque'} is loaded like this:</strong>
+            <dl>
+              {loadCheck(trayGeometry(positions[activePos]?.tray ?? 'rear', settings), placement.rotation).map(c => (
+                <div key={c.label} className={c.strong ? 'strong' : ''}><dt>{c.label}</dt><dd>{c.value}</dd></div>
+              ))}
+            </dl>
+            <div className="actions">
+              <button type="button" className="primary" autoFocus onClick={() => { const test = confirming; setConfirming(null); print(test); }}>Yes, print</button>
+              <button type="button" onClick={() => setConfirming(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
         {problems.length > 0 && (amountText + payee !== '' || !template) && <p className="hint">{problems[0]}</p>}
         {status && <p className={status.kind === 'ok' ? 'success' : 'error'}>{status.text}</p>}
       </form>
@@ -271,8 +289,8 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
             <TrayPicture
               layout={template.layout}
               image={template.image}
-              tray={positions[activePos]?.tray ?? 'rear'}
-              view={pageToTray(template.layout, positions[activePos]?.tray ?? 'rear', { rotation: placement.rotation, x: placement.x, y: placement.y })}
+              tray={trayGeometry(positions[activePos]?.tray ?? 'rear', settings)}
+              view={pageToTray(template.layout, trayGeometry(positions[activePos]?.tray ?? 'rear', settings), { rotation: placement.rotation, x: placement.x, y: placement.y })}
               interactive={false}
               scale={0.9}
             />

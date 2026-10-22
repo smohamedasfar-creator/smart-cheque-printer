@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { feedNotes, guessTray, guideSide, loadingSteps } from '../src/shared/loading';
+import { feedNotes, guessTray, guideSide, loadCheck, loadingSteps } from '../src/shared/loading';
 import { alignTrayView, defaultTrayView, TRAY_KINDS, trayToPage, type TrayKind } from '../src/shared/print';
 import { blankLayout } from '../src/shared/layoutDefaults';
 import type { FeedRotation } from '../src/shared/types';
@@ -94,5 +94,20 @@ describe('feedNotes', () => {
   test('no jam note when the cheque is fed lengthways', () => {
     expect(feedNotes(fab, 270)).toEqual([]);
     expect(feedNotes(rak, 90)).toEqual([]);
+  });
+});
+
+describe('front tray printing on the side facing up, and the check before printing', () => {
+  test('steps: lay it printed side up, do not turn it over', () => {
+    const steps = loadingSteps(fab, 'front-up', placed('front', 270, 'centre', fab).view, 270).join(' ');
+    expect(steps).toMatch(/printed side up, with the date end towards the printer/i);
+    expect(steps).toMatch(/do not turn it over/i);
+  });
+
+  test('the check names the tray, the side facing up and the end that goes in first', () => {
+    const show = (t: Parameters<typeof loadCheck>[0], r: Parameters<typeof loadCheck>[1]) => loadCheck(t, r).map(c => c.value);
+    expect(show('front', 270)).toEqual(['Front drawer', 'DOWN, facing the bottom of the drawer', 'Date end (vertical)', 'Just touching the cheque, not bending it']);
+    expect(show('front-up', 0)).toEqual(['Front drawer', 'UP, facing you', 'Top edge (horizontal)', 'Just touching the cheque, not bending it']);
+    expect(show('rear', 270)[1]).toMatch(/facing you/i);
   });
 });

@@ -303,3 +303,14 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .reminder-days { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .reminder-chip { display: inline-flex; align-items: center; gap: 4px; }
 .reminder-chip button { padding: 0 2px; font-size: 15px; line-height: 1; }
+.load-check { margin-top: 10px; padding: 12px 14px; border: 2px solid #e0a53a; border-radius: 8px; background: #fffaf0; }
+.load-check dl { display: grid; gap: 4px; margin: 8px 0; }
+.load-check dl > div { display: grid; grid-template-columns: 130px 1fr; gap: 8px; }
+.load-check dt { color: var(--muted, #556); }
+.load-check dd { margin: 0; }
+.load-check .strong dd { font-weight: 700; }
+.load-summary { padding: 8px 10px; border-radius: 6px; background: #f3f6fb; font-size: 13px; }
+.face-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.face-choice .hint { flex-basis: 100%; }
+.face-choice label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
+.face-choice input[type="radio"] { width: auto; margin: 0; }

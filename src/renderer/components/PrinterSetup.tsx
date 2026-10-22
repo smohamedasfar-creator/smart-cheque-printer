@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { foldFromOffset, MAX_READING_MM, offsetFromFold, trayOffset, withTrayOffset } from '../../shared/printerCalibration';
+import { foldFromOffset, frontFacesUp, MAX_READING_MM, offsetFromFold, trayOffset, withFrontFaceUp, withTrayOffset } from '../../shared/printerCalibration';
 import type { TrayKind } from '../../shared/print';
 import type { PrintSettings } from '../../shared/types';
 
@@ -69,6 +69,16 @@ function TrayCalibration({ tray, title, settings, onApply }: { tray: TrayKind; t
         <button type="button" className="primary" onClick={save}>Save</button>
         {saved && <button type="button" className="link" onClick={clear}>Remove</button>}
       </div>
+      {tray === 'front' && (
+        <div className="face-choice" role="radiogroup" aria-label="Front tray prints on the side facing">
+          <span>This printer's front tray prints on the side facing:</span>
+          <label><input type="radio" name="front-face" checked={!frontFacesUp(settings)} onChange={() => onApply(withFrontFaceUp(settings, false))} /> Down (most printers)</label>
+          <label><input type="radio" name="front-face" checked={frontFacesUp(settings)} onChange={() => onApply(withFrontFaceUp(settings, true))} /> Up</label>
+          <span className="hint">
+            Not sure? Pencil an X on the top side of a plain sheet, load it in the front drawer and Test print. Printed on the other side: Down. Printed on the X: Up.
+          </span>
+        </div>
+      )}
       {message && <p className={message.kind === 'ok' ? 'success' : 'error'}>{message.text}</p>}
     </div>
   );
