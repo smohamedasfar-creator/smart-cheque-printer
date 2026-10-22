@@ -22,7 +22,7 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 - **Four ready print positions** for every cheque book and printer: back tray and front tray, horizontal (top edge first) and
   vertical (date end first), each with its loading animation, shown as four tabs on the cheque layout.
   - **Default setting**: fields and one X / Y (a move of the whole print) are set on the main position, back tray horizontal;
-    the others follow it, vertical 5.5 mm higher.
+    the others follow it, vertical 7.5 mm higher and 6 mm further left.
   - **Manual setting**: every position has its own fields and X / Y; changing one never changes another.
 - **Print graph** on a photocopy of the cheque to read where each line starts and type it in.
 - **Upright and the right size on upload**: a cheque scanned any way round is turned so its logo is top-left and its date

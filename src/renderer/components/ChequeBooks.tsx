@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { blankLayout } from '../../shared/layoutDefaults';
-import { migratePositions, withReadyPositions } from '../../shared/positions';
+import { migratePositions, POSITIONS_VERSION, withReadyPositions } from '../../shared/positions';
 import type { Account, ChequeTemplate, NewAccount, PrintSettings } from '../../shared/types';
 import { activePositionIndex, ChequeBookSetup, type BookDraft } from './ChequeBookSetup';
 import { TemplateEditor, type Draft } from './TemplateEditor';
@@ -156,7 +156,8 @@ function BookScreen({ initial, settings, onCancel, onSaved }: { initial: Extract
     setError('');
     setSaving(true);
     try {
-      const template = await window.chequeApi.saveTemplate({ id: draft.id, name, layout: draft.layout, image: draft.image });
+      // Saved with the current print position data, so it is never brought up to date again.
+      const template = await window.chequeApi.saveTemplate({ id: draft.id, name, layout: { ...draft.layout, positionsVersion: POSITIONS_VERSION }, image: draft.image });
       await window.chequeApi.saveAccount({ ...readBook.current(), name, templateId: template.id });
       await onSaved(name);
     } catch (e) {

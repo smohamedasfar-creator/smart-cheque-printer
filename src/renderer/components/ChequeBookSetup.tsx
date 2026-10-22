@@ -7,7 +7,7 @@ import type { Account, ChequeLayout, FeedRotation, NewAccount, PrintPosition, Pr
 import { createMeasure } from '../measure';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { correctionFromCorner } from '../../shared/graph';
-import { adjustPosition, anyPositionSetUp, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, VERTICAL_LIFT_MM, withReadyPositions, withShift, type Shift } from '../../shared/positions';
+import { adjustPosition, anyPositionSetUp, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, VERTICAL_DIFF_TEXT, withReadyPositions, withShift, type Shift } from '../../shared/positions';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
 
@@ -331,7 +331,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
           How will you load the cheque?{' '}
           {manual
             ? 'Manual setting: each position has its own fields and X / Y; changing one never changes another.'
-            : `Default setting: one X / Y for all four; vertical prints ${VERTICAL_LIFT_MM} mm higher than horizontal. Switch to Manual in the cheque layout above to set each position on its own.`}
+            : `Default setting: one X / Y for all four; vertical prints ${VERTICAL_DIFF_TEXT} than horizontal. Switch to Manual in the cheque layout above to set each position on its own.`}
         </p>
         <div className="feed-options ready-positions">
           {READY_POSITIONS.map((r, i) => (
@@ -358,7 +358,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
               <button type="button" onClick={() => nudge(1, 0)} title="Move the print 1 mm right">→ Right</button>
               <span className="hint">1 mm each click</span>
             </div>
-            <span className="hint">{manual ? 'Moves this position only.' : `Moves all four positions together; vertical stays ${VERTICAL_LIFT_MM} mm higher.`}</span>
+            <span className="hint">{manual ? 'Moves this position only.' : `Moves all four positions together; vertical keeps its difference (${VERTICAL_DIFF_TEXT}).`}</span>
           </li>
           <li>When the text sits on the lines, press Save cheque book.</li>
         </ol>

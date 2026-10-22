@@ -264,3 +264,6 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .position-shift input[readonly] { background: transparent; }
 .book-screen .book-actions { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 12px 0; background: var(--bg, #f4f6fa); border-top: 1px solid var(--border, #dde3ea); z-index: 2; }
 .book-screen .template-editor { margin-bottom: 16px; }
+.advanced-guide { display: grid; gap: 10px; margin: 0; }
+.advanced-guide dt { font-weight: 600; font-size: 15px; }
+.advanced-guide dd { margin: 2px 0 0; font-size: 14px; line-height: 1.5; color: var(--muted, #556); }

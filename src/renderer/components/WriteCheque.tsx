@@ -79,8 +79,9 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
 
   // Older cheque books kept corrections in the page placement: turn them into the positions' own adjustments, once.
   useEffect(() => {
-    if (!account || !template || template.layout.positionsVersion === 2) return;
+    if (!account || !template) return;
     const m = migratePositions(template.layout, account.positions);
+    if (!m.changed) return;
     const old = withReadyPositions(template.layout, account.positions);
     const i = activePositionIndex({ ...account, positions: old });
     const active = i >= 0 ? m.positions[i] : null;

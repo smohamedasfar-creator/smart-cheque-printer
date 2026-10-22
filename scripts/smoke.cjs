@@ -99,14 +99,14 @@ async function addChequeBook(win, file, name, index) {
   // select the payee field to show the inspector
   await js(win, "document.querySelector('.field-handle[title=\"Payee\"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
   await shot(win, `${index}-layout-${name.replace(/W+/g, '-').toLowerCase()}`);
-  // Four position tabs: the vertical one shows every field 5.5 mm higher than the main (back tray, horizontal) one.
+  // Four position tabs: the vertical one shows every field 7.5 mm higher (and 6 mm further left) than the main one.
   const ys = () => js(win, "[...document.querySelectorAll('.graph-table tbody tr')].map(r => Number(r.querySelectorAll('input')[1].value))");
   check('layout: four position tabs', await js(win, "document.querySelectorAll('.position-tabs button').length"), 4);
   const mainYs = await ys();
   await js(win, "document.querySelectorAll('.position-tabs button')[1].click()");
   await wait(200);
   const vertYs = await ys();
-  check('layout: vertical tab prints every field 5.5 mm higher', vertYs.every((v, i) => Math.abs(v - mainYs[i] - 5.5) < 0.11), true);
+  check('layout: vertical tab prints every field 7.5 mm higher', vertYs.every((v, i) => Math.abs(v - mainYs[i] - 7.5) < 0.11), true);
   check('layout: default setting edits fields on the main tab only', await js(win, "document.querySelector('.graph-table input').readOnly"), true);
   check('layout: default and manual settings offered', await js(win, "[...document.querySelectorAll('.position-mode button')].map(b => b.textContent).join(',')"), 'Default,Manual');
   await shot(win, `${index}-layout-vertical-tab`);
@@ -172,7 +172,7 @@ async function addChequeBook(win, file, name, index) {
   const v = P.shiftFor(dragged, 'rear-v');
   const main = P.shiftFor(dragged, 'rear-h');
   // Default setting: the drag moves all four, the vertical keeps its 5.5 mm (the guide move started it afresh).
-  check(`${name}: drag kept as the X / Y, difference kept`, JSON.stringify([v, main]), JSON.stringify([{ x: d.x, y: Math.round((P.VERTICAL_LIFT_MM + d.y) * 10) / 10, auto: true }, { x: d.x, y: d.y, auto: false }]));
+  check(`${name}: drag kept as the X / Y, difference kept`, JSON.stringify([v, main]), JSON.stringify([{ x: Math.round((P.VERTICAL_DIFF.x + d.x) * 10) / 10, y: Math.round((P.VERTICAL_DIFF.y + d.y) * 10) / 10, auto: true }, { x: d.x, y: d.y, auto: false }]));
   if (index === 2) await manualSetting(win, name, index);
 }
 
@@ -198,7 +198,8 @@ async function moveByArrows(win, name, index) {
   check(`${name}: page placement stays plain`, JSON.stringify([after.feedRotation, after.pageX, after.pageY]), JSON.stringify([before.feedRotation, before.pageX, before.pageY]));
   // A new cheque book starts on the main position: 1 mm left and 2 mm up is its own setting, the others follow.
   check(`${name}: main position set by the arrows`, JSON.stringify(P.shiftFor(layout, 'rear-h')), JSON.stringify({ x: -1, y: 2, auto: false }));
-  check(`${name}: the other three follow it (vertical ${P.VERTICAL_LIFT_MM} mm higher)`, JSON.stringify(['rear-v', 'front-h', 'front-v'].map(k => P.shiftFor(layout, k))), JSON.stringify([{ x: -1, y: 2 + P.VERTICAL_LIFT_MM, auto: true }, { x: -1, y: 2, auto: true }, { x: -1, y: 2 + P.VERTICAL_LIFT_MM, auto: true }]));
+  const vd = { x: -1 + P.VERTICAL_DIFF.x, y: 2 + P.VERTICAL_DIFF.y, auto: true };
+  check(`${name}: the other three follow it (vertical ${P.VERTICAL_DIFF_TEXT})`, JSON.stringify(['rear-v', 'front-h', 'front-v'].map(k => P.shiftFor(layout, k))), JSON.stringify([vd, { x: -1, y: 2, auto: true }, vd]));
   check(`${name}: four ready positions saved`, after.positions.length >= 4, true);
 }
 

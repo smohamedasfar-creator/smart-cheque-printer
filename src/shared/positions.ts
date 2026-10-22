@@ -83,8 +83,14 @@ export function fieldShift(from: ChequeLayout, to: ChequeLayout): { x: number; y
 /** The main position: in the default setting the others keep a fixed difference from it. */
 export const MAIN_POSITION: PositionKey = 'rear-h';
 
-/** Printing vertically lands about this much lower on the cheque than horizontally, so vertical positions print this much higher. */
-export const VERTICAL_LIFT_MM = 5.5;
+/**
+ * Default setting: where vertical positions print compared with horizontal ones, in mm on the cheque (x right, y up).
+ * Measured on a printer: vertical printing lands lower and further right, so it is moved up and left by this much.
+ */
+export const VERTICAL_DIFF = { x: -6, y: 7.5 } as const;
+
+/** The difference in words, for the screens. */
+export const VERTICAL_DIFF_TEXT = `${VERTICAL_DIFF.y} mm higher and ${-VERTICAL_DIFF.x} mm further left`;
 
 export interface Shift {
   /** mm to the right on the cheque */
@@ -94,8 +100,8 @@ export interface Shift {
 }
 
 const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
-const lift = (key: PositionKey): Shift => ({ x: 0, y: key.endsWith('-v') ? VERTICAL_LIFT_MM : 0 });
 const ZERO: Shift = { x: 0, y: 0 };
+const lift = (key: PositionKey): Shift => (key.endsWith('-v') ? VERTICAL_DIFF : ZERO);
 
 /** Default: one X / Y for the main position and fixed differences for the others. Manual: every position on its own. */
 export const modeOf = (layout: ChequeLayout): PositionMode => layout.positionMode ?? 'default';
@@ -211,17 +217,34 @@ export function placementToShift(layout: ChequeLayout, from: Placement, to: Plac
   return { x: tenth(-dx), y: tenth(dy) };
 }
 
-/** 1.7.0 printed automatic vertical positions this much higher. */
+/** 1.7.0 printed automatic vertical positions this much higher; 1.8.0 this much. */
 const LIFT_1_7_MM = 3.5;
-const CURRENT_VERSION = 3;
+const LIFT_1_8: Shift = { x: 0, y: 5.5 };
+/** 1.8.1: in the default setting horizontal printing moved by this much (measured) while vertical stayed where it was. */
+const HORIZONTAL_FIX_1_8_1: Shift = { x: 6, y: -2 };
+/** Version of the print position data written by this app; a cheque book saved with it needs no update. */
+export const POSITIONS_VERSION = 4;
 
 /**
  * Brings an older cheque book up to date, once. Corrections kept in the page placement become the position's X / Y
  * (1.7.0). Then, if positions other than the main one were set up on their own, the cheque book switches to the
- * manual setting with each position printing where it did; otherwise it keeps the default setting.
+ * manual setting with each position printing where it did; otherwise it keeps the default setting. In the default
+ * setting (1.8.1) the vertical positions keep printing where they did and the horizontal ones move by the measured fix.
  */
 export function migratePositions(layout: ChequeLayout, positions: readonly PrintPosition[]): { layout: ChequeLayout; positions: PrintPosition[]; changed: boolean } {
-  if ((layout.positionsVersion ?? 0) >= CURRENT_VERSION) return { layout, positions: withReadyPositions(layout, positions), changed: false };
+  const version = layout.positionsVersion ?? 0;
+  if (version >= POSITIONS_VERSION) return { layout, positions: withReadyPositions(layout, positions), changed: false };
+  const up = version < 3 ? toVersion3(layout, positions) : { layout, positions: withReadyPositions(layout, positions) };
+  let L: ChequeLayout = { ...up.layout, positionsVersion: POSITIONS_VERSION };
+  if (modeOf(L) === 'default') {
+    const main = L.positionShifts?.[MAIN_POSITION] ?? ZERO;
+    L = { ...L, positionShifts: { [MAIN_POSITION]: { x: tenth(main.x + HORIZONTAL_FIX_1_8_1.x), y: tenth(main.y + HORIZONTAL_FIX_1_8_1.y) } } };
+  }
+  return { layout: L, positions: up.positions, changed: true };
+}
+
+/** Up to the 1.8.0 data: placement corrections become X / Y, positions set up on their own make the manual setting. */
+function toVersion3(layout: ChequeLayout, positions: readonly PrintPosition[]): { layout: ChequeLayout; positions: PrintPosition[] } {
   let own: Partial<Record<PositionKey, Shift>> = { ...(layout.positionShifts ?? {}) };
   let list = withReadyPositions(layout, positions);
   if ((layout.positionsVersion ?? 0) < 2) {
@@ -235,7 +258,7 @@ export function migratePositions(layout: ChequeLayout, positions: readonly Print
     });
   }
   const others = READY_POSITIONS.filter(r => r.key !== MAIN_POSITION && own[r.key]);
-  let L: ChequeLayout = { ...layout, positionsVersion: CURRENT_VERSION };
+  let L: ChequeLayout = { ...layout, positionsVersion: 3 };
   if (!others.length) {
     L = { ...L, positionMode: 'default', positionShifts: own[MAIN_POSITION] ? { [MAIN_POSITION]: own[MAIN_POSITION]! } : {} };
   } else {
@@ -244,10 +267,11 @@ export function migratePositions(layout: ChequeLayout, positions: readonly Print
     const oldLift = (k: PositionKey) => (k.endsWith('-v') ? LIFT_1_7_MM : 0);
     const main = own[MAIN_POSITION] ?? { x: own[first.key]!.x, y: own[first.key]!.y - oldLift(first.key) };
     const positionLayouts: ChequeLayout['positionLayouts'] = {};
-    for (const r of READY_POSITIONS) positionLayouts[r.key] = fieldsOf(shiftLayout(layout, own[r.key] ?? { x: main.x + lift(r.key).x, y: main.y + lift(r.key).y }));
+    const lift18 = (k: PositionKey) => (k.endsWith('-v') ? LIFT_1_8 : ZERO);
+    for (const r of READY_POSITIONS) positionLayouts[r.key] = fieldsOf(shiftLayout(layout, own[r.key] ?? { x: main.x + lift18(r.key).x, y: main.y + lift18(r.key).y }));
     L = { ...L, positionMode: 'manual', positionLayouts, positionShifts: {} };
   }
-  return { layout: L, positions: list, changed: true };
+  return { layout: L, positions: list };
 }
 
 /** A position back to its starting X / Y (default: everything follows the plain layout again; manual: this position only). */

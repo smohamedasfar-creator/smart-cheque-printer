@@ -13,7 +13,7 @@ import {
   shiftLayout,
   toDefault,
   toManual,
-  VERTICAL_LIFT_MM,
+  VERTICAL_DIFF,
   withPositionLayout,
   withReadyPositions,
   withShift,
@@ -56,24 +56,24 @@ describe('ready print positions', () => {
 });
 
 describe('default setting: one X / Y, fixed differences between positions', () => {
-  test('nothing set up: horizontal prints as laid out, vertical 5.5 mm higher', () => {
-    expect(VERTICAL_LIFT_MM).toBe(5.5);
+  test('nothing set up: horizontal prints as laid out, vertical 7.5 mm higher and 6 mm further left', () => {
+    expect(VERTICAL_DIFF).toEqual({ x: -6, y: 7.5 });
     expect(shiftFor(layout, 'rear-h')).toEqual({ x: 0, y: 0, auto: false });
-    expect(shiftFor(layout, 'rear-v')).toEqual({ x: 0, y: 5.5, auto: true });
+    expect(shiftFor(layout, 'rear-v')).toEqual({ x: -6, y: 7.5, auto: true });
     expect(shiftFor(layout, 'front-h')).toEqual({ x: 0, y: 0, auto: true });
-    expect(shiftFor(layout, 'front-v')).toEqual({ x: 0, y: 5.5, auto: true });
+    expect(shiftFor(layout, 'front-v')).toEqual({ x: -6, y: 7.5, auto: true });
     expect(anyPositionSetUp(layout)).toBe(false);
   });
 
   test('one X / Y moves all four and keeps the difference, whichever position it is typed for', () => {
     const L = withShift(layout, 'rear-h', { x: 1, y: -2 });
     expect(['rear-h', 'rear-v', 'front-h', 'front-v'].map(k => shiftFor(L, k as never))).toEqual([
-      { x: 1, y: -2, auto: false }, { x: 1, y: 3.5, auto: true }, { x: 1, y: -2, auto: true }, { x: 1, y: 3.5, auto: true },
+      { x: 1, y: -2, auto: false }, { x: -5, y: 5.5, auto: true }, { x: 1, y: -2, auto: true }, { x: -5, y: 5.5, auto: true },
     ]);
-    // Set from the vertical test print: the vertical gets exactly that, the horizontal keeps 5.5 mm less.
+    // Set from the vertical test print: the vertical gets exactly that, the horizontal keeps the difference.
     const V = withShift(layout, 'rear-v', { x: 0.5, y: 7 });
     expect(shiftFor(V, 'rear-v')).toMatchObject({ x: 0.5, y: 7 });
-    expect(shiftFor(V, 'rear-h')).toMatchObject({ x: 0.5, y: 1.5 });
+    expect(shiftFor(V, 'rear-h')).toMatchObject({ x: 6.5, y: -0.5 });
     expect(anyPositionSetUp(V)).toBe(true);
   });
 
@@ -127,7 +127,7 @@ describe('manual setting: every position on its own', () => {
     const D = toDefault(M);
     expect(modeOf(D)).toBe('default');
     expect(layoutForPosition(D, 'rear-h').payee).toEqual(layoutForPosition(M, 'rear-h').payee);
-    expect(shiftFor(D, 'rear-v')).toEqual({ x: 0, y: 1 + VERTICAL_LIFT_MM, auto: true });
+    expect(shiftFor(D, 'rear-v')).toEqual({ x: VERTICAL_DIFF.x, y: 1 + VERTICAL_DIFF.y, auto: true });
   });
 });
 
@@ -140,7 +140,8 @@ describe('older cheque books are brought up to date once', () => {
     const { layout: L, positions, changed } = migratePositions(layout, [userSet, list[1], appMoved, list[3]]);
     expect(changed).toBe(true);
     expect(modeOf(L)).toBe('default');
-    expect(shiftFor(L, 'rear-h')).toEqual({ x: 0, y: 4, auto: false });
+    // 4 mm higher, plus the 1.8.1 horizontal move (6 mm right, 2 mm down).
+    expect(shiftFor(L, 'rear-h')).toEqual({ x: 6, y: 2, auto: false });
     expect(positions.slice(0, 4).map(p => [p.x, p.y])).toEqual(list.map(p => [p.x, p.y]));
     expect(migratePositions(L, positions).changed).toBe(false);
   });
@@ -151,7 +152,22 @@ describe('older cheque books are brought up to date once', () => {
     expect(modeOf(L)).toBe('manual');
     expect(layoutForPosition(L, 'rear-v').payee).toEqual(shiftLayout(layout, { x: -1, y: 8 }).payee);
     expect(layoutForPosition(L, 'rear-h').payee).toEqual(shiftLayout(layout, { x: 0, y: 2 }).payee);
-    // A position that followed the main one now has the 5.5 mm difference.
-    expect(layoutForPosition(L, 'front-v').payee).toEqual(shiftLayout(layout, { x: 0, y: 2 + VERTICAL_LIFT_MM }).payee);
+    // A position that followed the main one prints where 1.8.0 printed it (5.5 mm higher).
+    expect(layoutForPosition(L, 'front-v').payee).toEqual(shiftLayout(layout, { x: 0, y: 2 + 5.5 }).payee);
+  });
+
+  test('1.8.0 default setting: vertical keeps printing where it did, horizontal moves 6 mm right and 2 mm down', () => {
+    const old = { ...layout, positionsVersion: 3, positionMode: 'default' as const, positionShifts: { 'rear-h': { x: 1, y: 3 } } };
+    const { layout: L, changed } = migratePositions(old, []);
+    expect(changed).toBe(true);
+    // 1.8.0 printed horizontal at (1, 3) and vertical at (1, 8.5).
+    expect(shiftFor(L, 'rear-h')).toMatchObject({ x: 7, y: 1 });
+    expect(shiftFor(L, 'rear-v')).toMatchObject({ x: 1, y: 8.5 });
+    expect(shiftFor(L, 'front-v')).toMatchObject({ x: 1, y: 8.5 });
+    // A 1.8.0 cheque book that was never set up moves the same way.
+    expect(shiftFor(migratePositions({ ...layout, positionsVersion: 3 }, []).layout, 'rear-v')).toMatchObject({ x: 0, y: 5.5 });
+    // Manual cheque books keep every position as it was.
+    const manual = { ...old, positionMode: 'manual' as const, positionShifts: { 'rear-v': { x: 2, y: 2 } } };
+    expect(migratePositions(manual, []).layout.positionShifts).toEqual(manual.positionShifts);
   });
 });
