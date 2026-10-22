@@ -84,13 +84,33 @@ export function fieldShift(from: ChequeLayout, to: ChequeLayout): { x: number; y
 export const MAIN_POSITION: PositionKey = 'rear-h';
 
 /**
- * Default setting: where vertical positions print compared with horizontal ones, in mm on the cheque (x right, y up).
- * Measured on a printer: vertical printing lands lower and further right, so it is moved up and left by this much.
+ * The fixed vertical difference 1.8.1 to 1.8.3 used (measured on one printer before printers were calibrated): kept by
+ * the cheque books that used it, until they switch to the printer calibration alone.
  */
-export const VERTICAL_DIFF = { x: -6, y: 7.5 } as const;
+export const LEGACY_VERTICAL_DIFF = { x: -6, y: 7.5 } as const;
+
+/** Default setting: where vertical positions print compared with horizontal ones (none unless a cheque book kept one). */
+export const verticalDiff = (layout: ChequeLayout): Shift => layout.verticalDiff ?? ZERO;
 
 /** The difference in words, for the screens. */
-export const VERTICAL_DIFF_TEXT = `${VERTICAL_DIFF.y} mm higher and ${-VERTICAL_DIFF.x} mm further left`;
+export function verticalDiffText(layout: ChequeLayout): string {
+  const d = verticalDiff(layout);
+  if (!d.x && !d.y) return 'the same as horizontal (the printer calibration turns with the cheque)';
+  const parts = [d.y ? `${Math.abs(d.y)} mm ${d.y > 0 ? 'higher' : 'lower'}` : '', d.x ? `${Math.abs(d.x)} mm further ${d.x > 0 ? 'right' : 'left'}` : ''].filter(Boolean);
+  return `${parts.join(' and ')} than horizontal`;
+}
+
+/** Any setting of this cheque book's own on top of the printer calibration (X / Y, a vertical difference, manual positions). */
+export function hasOwnAdjustments(layout: ChequeLayout): boolean {
+  const d = verticalDiff(layout);
+  return modeOf(layout) === 'manual' || Boolean(d.x || d.y) || Object.values(layout.positionShifts ?? {}).some(s => s && (s.x || s.y));
+}
+
+/** Only the printer calibration: no X / Y, no vertical difference, the default setting with the main position's fields. */
+export function withoutOwnAdjustments(layout: ChequeLayout): ChequeLayout {
+  const { verticalDiff: _d, ...rest } = toDefault(layout);
+  return { ...rest, positionShifts: {} };
+}
 
 export interface Shift {
   /** mm to the right on the cheque */
@@ -101,7 +121,6 @@ export interface Shift {
 
 const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
 const ZERO: Shift = { x: 0, y: 0 };
-const lift = (key: PositionKey): Shift => (key.endsWith('-v') ? VERTICAL_DIFF : ZERO);
 
 /** Default: one X / Y for the main position and fixed differences for the others. Manual: every position on its own. */
 export const modeOf = (layout: ChequeLayout): PositionMode => layout.positionMode ?? 'default';
@@ -117,7 +136,7 @@ export function shiftFor(layout: ChequeLayout, key: PositionKey): Shift & { auto
     return { x: tenth(s.x), y: tenth(s.y), auto: false };
   }
   const main = own[MAIN_POSITION] ?? ZERO;
-  const l = lift(key);
+  const l = key.endsWith('-v') ? verticalDiff(layout) : ZERO;
   return { x: tenth(main.x + l.x), y: tenth(main.y + l.y), auto: key !== MAIN_POSITION };
 }
 
@@ -127,7 +146,7 @@ export function shiftFor(layout: ChequeLayout, key: PositionKey): Shift & { auto
  */
 export function withShift(layout: ChequeLayout, key: PositionKey, shift: Shift): ChequeLayout {
   if (modeOf(layout) === 'manual') return { ...layout, positionShifts: { ...layout.positionShifts, [key]: { x: tenth(shift.x), y: tenth(shift.y) } } };
-  const l = lift(key);
+  const l = key.endsWith('-v') ? verticalDiff(layout) : ZERO;
   return { ...layout, positionShifts: { [MAIN_POSITION]: { x: tenth(shift.x - l.x), y: tenth(shift.y - l.y) } } };
 }
 
@@ -223,7 +242,7 @@ const LIFT_1_8: Shift = { x: 0, y: 5.5 };
 /** 1.8.1: in the default setting horizontal printing moved by this much (measured) while vertical stayed where it was. */
 const HORIZONTAL_FIX_1_8_1: Shift = { x: 6, y: -2 };
 /** Version of the print position data written by this app; a cheque book saved with it needs no update. */
-export const POSITIONS_VERSION = 4;
+export const POSITIONS_VERSION = 5;
 
 /**
  * Brings an older cheque book up to date, once. Corrections kept in the page placement become the position's X / Y
@@ -236,10 +255,12 @@ export function migratePositions(layout: ChequeLayout, positions: readonly Print
   if (version >= POSITIONS_VERSION) return { layout, positions: withReadyPositions(layout, positions), changed: false };
   const up = version < 3 ? toVersion3(layout, positions) : { layout, positions: withReadyPositions(layout, positions) };
   let L: ChequeLayout = { ...up.layout, positionsVersion: POSITIONS_VERSION };
-  if (modeOf(L) === 'default') {
+  if (version < 4 && modeOf(L) === 'default') {
     const main = L.positionShifts?.[MAIN_POSITION] ?? ZERO;
     L = { ...L, positionShifts: { [MAIN_POSITION]: { x: tenth(main.x + HORIZONTAL_FIX_1_8_1.x), y: tenth(main.y + HORIZONTAL_FIX_1_8_1.y) } } };
   }
+  // 1.8.1 to 1.8.3 printed vertical with a fixed difference: such cheque books keep it until they drop their own settings.
+  if (version < 5 && modeOf(L) === 'default') L = { ...L, verticalDiff: { ...LEGACY_VERTICAL_DIFF } };
   return { layout: L, positions: up.positions, changed: true };
 }
 

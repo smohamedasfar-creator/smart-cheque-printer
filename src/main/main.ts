@@ -6,6 +6,7 @@ import { APP_LINKS, resolveAppLink, type AppLink } from '../shared/appLinks';
 import { buildCalibrationHtml, buildPrintHtml, pageGeometry } from '../shared/print';
 import { calibrationPattern } from '../shared/detect/calibrate';
 import { buildRulerSheetHtml } from '../shared/detect/rulerSheet';
+import { buildFoldSheetHtml, calibratedPlacement, trayOffset } from '../shared/printerCalibration';
 import type { PrintJob } from '../preload/api';
 import { createStore, type Store } from './store';
 
@@ -26,17 +27,25 @@ async function openStore(dbPath: string): Promise<Store> {
   return createStore(db, persist);
 }
 
+/** The page placement moved back by the printer's calibrated offset for the tray the cheque is loaded in. */
+function placementOnPrinter(job: PrintJob): PrintJob['placement'] {
+  const p = job.placement;
+  if (!p || !job.tray || p.rotation === null || p.x === null || p.y === null) return p;
+  return calibratedPlacement({ rotation: p.rotation, x: p.x, y: p.y }, trayOffset(job.settings, job.tray));
+}
+
 async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }> {
   const layout = job.layout;
-  const geometry = pageGeometry(layout, job.settings, job.placement);
+  const placement = placementOnPrinter(job);
+  const geometry = pageGeometry(layout, job.settings, placement);
   const html = buildPrintHtml(job.items, geometry, {
     fontFamily: job.settings.fontFamily,
     guides: job.testPrint,
     marks: job.marks === true,
     graph: job.graph === true,
     // The scan-to-calibrate test print: dot rows across the page around where the cheque is expected.
-    pageDots: job.calibrate && job.placement && job.placement.rotation !== null && job.placement.x !== null && job.placement.y !== null
-      ? calibrationPattern(layout, { rotation: job.placement.rotation, x: job.placement.x, y: job.placement.y })
+    pageDots: job.calibrate && placement && placement.rotation !== null && placement.x !== null && placement.y !== null
+      ? calibrationPattern(layout, { rotation: placement.rotation, x: placement.x, y: placement.y })
       : undefined,
   });
   return printHtml(html, geometry.pageWidth, geometry.pageHeight, job.settings.printerName);
@@ -107,6 +116,7 @@ function registerIpc(store: Store, dbPath: string) {
   handle('print', (job: PrintJob) => printJob(job));
   handle('print:calibration', (printerName: string) => printHtml(buildCalibrationHtml(), A4_MM.width, A4_MM.height, String(printerName ?? '')));
   handle('print:rulerSheet', (printerName: string) => printHtml(buildRulerSheetHtml(), A4_MM.width, A4_MM.height, String(printerName ?? '')));
+  handle('print:foldSheet', (printerName: string, trayTitle: string) => printHtml(buildFoldSheetHtml(String(trayTitle ?? '').slice(0, 40)), A4_MM.width, A4_MM.height, String(printerName ?? '')));
   handle('export:csv', async (csv: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `cheques-${new Date().toISOString().slice(0, 10)}.csv`,

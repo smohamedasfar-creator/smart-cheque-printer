@@ -99,14 +99,14 @@ async function addChequeBook(win, file, name, index) {
   // select the payee field to show the inspector
   await js(win, "document.querySelector('.field-handle[title=\"Payee\"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
   await shot(win, `${index}-layout-${name.replace(/W+/g, '-').toLowerCase()}`);
-  // Four position tabs: the vertical one shows every field 7.5 mm higher (and 6 mm further left) than the main one.
+  // Four position tabs: a new cheque book has no built-in difference (the printer calibration turns with the cheque).
   const ys = () => js(win, "[...document.querySelectorAll('.graph-table tbody tr')].map(r => Number(r.querySelectorAll('input')[1].value))");
   check('layout: four position tabs', await js(win, "document.querySelectorAll('.position-tabs button').length"), 4);
   const mainYs = await ys();
   await js(win, "document.querySelectorAll('.position-tabs button')[1].click()");
   await wait(200);
   const vertYs = await ys();
-  check('layout: vertical tab prints every field 7.5 mm higher', vertYs.every((v, i) => Math.abs(v - mainYs[i] - 7.5) < 0.11), true);
+  check('layout: vertical tab prints like the main one', vertYs.every((v, i) => Math.abs(v - mainYs[i]) < 0.11), true);
   check('layout: default setting edits fields on the main tab only', await js(win, "document.querySelector('.graph-table input').readOnly"), true);
   check('layout: default and manual settings offered', await js(win, "[...document.querySelectorAll('.position-mode button')].map(b => b.textContent).join(',')"), 'Default,Manual');
   await shot(win, `${index}-layout-vertical-tab`);
@@ -173,7 +173,7 @@ async function addChequeBook(win, file, name, index) {
   const v = P.shiftFor(dragged, 'rear-v');
   const main = P.shiftFor(dragged, 'rear-h');
   // Default setting: the drag moves all four, the vertical keeps its 5.5 mm (the guide move started it afresh).
-  check(`${name}: drag kept as the X / Y, difference kept`, JSON.stringify([v, main]), JSON.stringify([{ x: Math.round((P.VERTICAL_DIFF.x + d.x) * 10) / 10, y: Math.round((P.VERTICAL_DIFF.y + d.y) * 10) / 10, auto: true }, { x: d.x, y: d.y, auto: false }]));
+  check(`${name}: drag kept as the X / Y, difference kept`, JSON.stringify([v, main]), JSON.stringify([{ x: Math.round((P.verticalDiff(dragged).x + d.x) * 10) / 10, y: Math.round((P.verticalDiff(dragged).y + d.y) * 10) / 10, auto: true }, { x: d.x, y: d.y, auto: false }]));
   if (index === 2) await manualSetting(win, name, index);
 }
 
@@ -199,8 +199,8 @@ async function moveByArrows(win, name, index) {
   check(`${name}: page placement stays plain`, JSON.stringify([after.feedRotation, after.pageX, after.pageY]), JSON.stringify([before.feedRotation, before.pageX, before.pageY]));
   // A new cheque book starts on the main position: 1 mm left and 2 mm up is its own setting, the others follow.
   check(`${name}: main position set by the arrows`, JSON.stringify(P.shiftFor(layout, 'rear-h')), JSON.stringify({ x: -1, y: 2, auto: false }));
-  const vd = { x: -1 + P.VERTICAL_DIFF.x, y: 2 + P.VERTICAL_DIFF.y, auto: true };
-  check(`${name}: the other three follow it (vertical ${P.VERTICAL_DIFF_TEXT})`, JSON.stringify(['rear-v', 'front-h', 'front-v'].map(k => P.shiftFor(layout, k))), JSON.stringify([vd, { x: -1, y: 2, auto: true }, vd]));
+  const vd = { x: -1 + P.verticalDiff(layout).x, y: 2 + P.verticalDiff(layout).y, auto: true };
+  check(`${name}: the other three follow it (vertical ${P.verticalDiffText(layout)})`, JSON.stringify(['rear-v', 'front-h', 'front-v'].map(k => P.shiftFor(layout, k))), JSON.stringify([vd, { x: -1, y: 2, auto: true }, vd]));
   check(`${name}: four ready positions saved`, after.positions.length >= 4, true);
 }
 
@@ -381,7 +381,16 @@ async function run(win) {
   await js(win, "[...document.querySelectorAll('h2')].find(h => h.textContent === 'Amount and text').scrollIntoView()");
   await shot(win, '8a-settings-text');
   check('font list has installed fonts', await js(win, "document.querySelectorAll('select option').length > 30"), true);
-  await js(win, "document.querySelector('.calibration').scrollIntoView()");
+  // Printer calibration, once per tray: the numbers read at the two folds become the tray's page offset.
+  check('settings: printer calibration for both trays', await js(win, "document.querySelectorAll('.tray-calibration').length"), 2);
+  await setField(win, '.tray-calibration[data-tray="rear"] input', '-1');
+  await js(win, "(() => { const el = document.querySelectorAll('.tray-calibration[data-tray=\"rear\"] input')[1]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '6.5'); el.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await click(win, 'Save');
+  await wait(300);
+  const calibrated = await js(win, 'window.chequeApi.getSettings()');
+  check('settings: back tray calibrated from the folds', JSON.stringify(calibrated.printerOffsets?.[calibrated.printerName]?.rear), JSON.stringify({ x: 1, y: -6.5 }));
+  check('settings: tray shows calibrated', await js(win, "document.querySelector('.tray-calibration[data-tray=\"rear\"]').textContent.includes('✓ Calibrated: A -1, B 6.5')"), true);
+  await js(win, "document.querySelector('.printer-setup').scrollIntoView()");
   await shot(win, '8-settings');
   await click(win, 'Help & About');
   await wait(300);
@@ -412,6 +421,13 @@ async function printPdf(win, template) {
   await wait(500);
   fs.writeFileSync(path.join(outDir, '10-print-page.png'), (await view.webContents.capturePage()).toPNG());
   view.destroy();
+  // The printer calibration sheet, as printed on A4.
+  const { buildFoldSheetHtml } = require(path.join(shared, 'printerCalibration.js'));
+  const sheet = new BrowserWindow({ show: false, width: Math.round((210 / 25.4) * 96), height: Math.round((297 / 25.4) * 96), webPreferences: { offscreen: true, javascript: false } });
+  await sheet.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildFoldSheetHtml('Back tray'))}`);
+  await wait(500);
+  fs.writeFileSync(path.join(outDir, '11-fold-sheet.png'), (await sheet.webContents.capturePage()).toPNG());
+  sheet.destroy();
 }
 
 function finish() {

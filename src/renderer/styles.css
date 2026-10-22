@@ -271,3 +271,9 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .setup-option { border: 1px solid var(--border, #dde3ea); border-radius: 8px; padding: 10px 12px; background: var(--card, #fff); }
 .setup-option h4 { margin: 0 0 6px; }
 .setup-option .setup-steps { margin: 0; padding-left: 20px; }
+.printer-setup { margin: 12px 0; }
+.tray-calibration { border: 1px solid var(--border, #dde3ea); border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: var(--card, #fff); }
+.tray-calibration.done { border-color: #9fd3b0; }
+.tray-calibration-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 6px; }
+.tray-calibration-row { align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.tray-calibration-row input { width: 90px; }

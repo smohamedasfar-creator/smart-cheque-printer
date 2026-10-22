@@ -66,6 +66,11 @@ export interface ChequeLayout {
   positionMode?: PositionMode;
   /** Manual setting: each position's own fields (where they print before its X / Y). */
   positionLayouts?: Partial<Record<PositionKey, PositionFields>>;
+  /**
+   * Default setting: where vertical positions print compared with horizontal ones (mm on the cheque, x right, y up).
+   * None for new cheque books: the printer calibration turns with the cheque. Older ones keep the difference they used.
+   */
+  verticalDiff?: { x: number; y: number };
   /** Version of the print position data, so older cheque books are brought up to date once. */
   positionsVersion?: number;
 }
@@ -135,6 +140,11 @@ export interface PrintSettings {
   printerName: string;
   /** Set once the user has measured where the printer places the cheque with the ruler page. */
   calibrated: boolean;
+  /**
+   * Printer calibration: for each printer (by name) and tray, how far it puts its print from where it should be on the
+   * page (mm, x right, y towards the end of the page). Measured once with the folded A4 sheet.
+   */
+  printerOffsets?: Record<string, Partial<Record<'rear' | 'front' | 'manual', { x: number; y: number }>>>;
 }
 
 export const DEFAULT_SETTINGS: PrintSettings = {

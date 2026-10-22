@@ -18,6 +18,8 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
   the cheque), cross only, none. Each cheque layout keeps its own default, so A/C PAYEE prints once.
 - **Graph layout**: the cheque is graph paper with (0, 0) at its bottom-left corner; each writing space has an X, Y and length in mm
   that you can type or drag.
+- **Printer calibration, once per tray**: print an A4 sheet, fold it in half each way and type the two numbers read at the
+  folds. Every cheque of every bank then prints in place, horizontal and vertical (the shift turns with the cheque).
 - **One screen per cheque book**: the cheque layout, the cheque book details and setting up printing, saved together.
 - **Four ready print positions** for every cheque book and printer: back tray and front tray, horizontal (top edge first) and
   vertical (date end first), each with its loading animation, shown as four tabs on the cheque layout.

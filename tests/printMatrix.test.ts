@@ -25,6 +25,7 @@ import { blankLayout } from '../src/shared/layoutDefaults';
 import { calibrationPattern, calibrationResult, DOT_MM, locateCheque } from '../src/shared/detect/calibrate';
 import { correctionFromCorner } from '../src/shared/graph';
 import { placementToShift } from '../src/shared/positions';
+import { buildFoldSheetHtml, calibratedPlacement, offsetFromFold } from '../src/shared/printerCalibration';
 import { renderCheque } from '../src/shared/chequeRender';
 import { DEFAULT_SETTINGS, type ChequeLayout, type FeedRotation, type TextItem } from '../src/shared/types';
 
@@ -307,6 +308,34 @@ describe('virtual printer: fixing a test print by dragging', () => {
       }
     }
     expect(left.slice(0, 6)).toEqual([]);
+  });
+
+  test('one folded A4 sheet per tray puts every cheque in place: any size, direction, spot and printer error', () => {
+    const left: string[] = [];
+    for (const tray of TRAY_KINDS_LIST()) {
+      for (const error of [...ERRORS, { x: 0.75, y: -6.75 }]) {
+        // The calibration sheet: scale A's 0 printed mid-page lands error.x mm right; the fold (the real middle) crosses
+        // it at -error.x, read to the nearest half millimetre. The same down the page for scale B.
+        const reading = { a: Math.round(-error.x * 2) / 2, b: Math.round(-error.y * 2) / 2 };
+        const offset = offsetFromFold(reading);
+        for (const { turn, w, h, s } of cases.filter(c => c.tray === tray)) {
+          const layout = layoutOf(w, h);
+          const actual = spot(layout, tray, turn, s);
+          const printed = calibratedPlacement(trayToPage(layout, tray, actual), offset);
+          for (const c of probes(layout)) {
+            const now = landsOnCheque(layout, tray, actual, printed, error, c);
+            if (!near(now, c, 0.36)) { left.push(`${tray} ${turn} ${w}x${h} ${s} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
+          }
+        }
+      }
+    }
+    expect(left.slice(0, 6)).toEqual([]);
+  });
+
+  test('the calibration sheet has its zero marks exactly in the middle of the A4 page', () => {
+    const html = buildFoldSheetHtml('Back tray');
+    expect(html).toContain('x1="105" y1="95" x2="105"');
+    expect(html).toContain('x1="55" y1="148.5" x2="62" y2="148.5"');
   });
 
   test('a dragged, scanned or graph-read correction becomes the position adjustment and prints the same', () => {

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { APP_LINKS, displayPhone, resolveAppLink } from '../../shared/appLinks';
-import { VERTICAL_DIFF_TEXT } from '../../shared/positions';
 
 /** For everyone: the few steps from a blank cheque to a printed one. */
 const STEPS: Array<[string, string]> = [
+  [
+    'Calibrate your printer once',
+    'Settings → Printer calibration. Load a plain A4 sheet in the back tray and press Print calibration sheet. Fold the printed sheet in half from left to right (edges exactly together) and read scale A at the fold; unfold, fold top to bottom and read scale B. Type both numbers and Save. Do the same for the front tray if you use it. This is done once per printer: every cheque book of every bank then prints in place, horizontally and vertically.',
+  ],
   [
     'Add a cheque book',
     'Cheque Books → Add cheque book. Drop in a scan of a blank cheque leaf (300 DPI, with a dark sheet behind the cheque so its edges show). The app turns it the right way up, measures it and finds the date, payee, amount in words and amount box. FAB and RAKBANK cheques are recognised from the bank library.',
@@ -14,7 +17,7 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Set up printing once',
-    'Under Set up printing, Back tray · Horizontal is chosen. Load a photocopy of the cheque as the picture shows and use one of the two options. Option 1 · Graph: Print graph, read on the printed copy where each line starts (red X, blue Y) and type the numbers in "Where each field starts". Option 2 · Manual adjustment: Test print, and if the text is off the lines press ↑ ↓ ← → (1 mm each) until it sits on them. Press Save cheque book. The other three ways of loading are set up with it.',
+    'Under Set up printing, load a photocopy of the cheque as the picture shows and Test print. With the printer calibrated, the text should sit on the lines. If a field is off, use Option 1 · Graph: Print graph on the copy, read where that line starts (red X, blue Y) and type it in "Where each field starts". Press Save cheque book.',
   ],
   [
     'Write and print',
@@ -27,8 +30,8 @@ const STEPS: Array<[string, string]> = [
 ];
 
 const TIPS = [
-  'Load every cheque the same way as the picture shows, with the paper guide just touching it.',
-  'If a cheque prints slightly off later, open the cheque book, Test print and press the arrows. Keep the fields on the lines of the cheque picture: the arrows, not the fields, make up for the printer.',
+  'Load every cheque the same way as the picture shows, with the paper guides just touching it.',
+  'If every cheque prints off by the same amount, recalibrate the printer (Settings). If only one cheque design is off, fix its fields with the graph. Keep the fields on the lines of the cheque: the printer calibration, not the fields, makes up for the printer.',
   'If the app says the printer printed the page smaller or bigger, set the printer to 100% (turn off "Fit to page").',
   'Choose the text size and font once in Settings. A long payee name stays on one line and gets smaller (not below 8 pt) so it never runs past its line.',
   'Back up your data regularly (Settings → Your data). The backup file holds your cheque books, payees and history.',
@@ -36,6 +39,10 @@ const TIPS = [
 
 /** For whoever sets the printer up: what each setting does. */
 const ADVANCED: Array<[string, string]> = [
+  [
+    'Why the printer calibration fixes every cheque',
+    'A printer puts every page a little off, the same way whatever is printed. The calibration sheet measures that once per tray, and the app moves every print back by it. When a cheque is fed vertically, the same shift falls on the cheque in another direction; the app turns it with the cheque, so horizontal and vertical are both right without separate numbers.',
+  ],
   [
     'Graph and X / Y',
     'The cheque layout counts in mm from the cheque\'s bottom-left corner (0, 0): X to the right (red numbers), Y up (blue numbers). Each field starts at an X, Y and has a length. Print graph prints mm graph paper on a photocopy of the cheque in the same place as the text: the numbers you read where a line starts are exactly where the text will print, so type them in "Where each field starts". The picture of the cheque on screen can differ a little from the paper (the scan size, the printer\'s own offset); the graph shows the truth.',
@@ -46,15 +53,15 @@ const ADVANCED: Array<[string, string]> = [
   ],
   [
     'Default setting',
-    `One X / Y for the cheque book, set on the main tab (back tray, horizontal) or with the arrows. The other three follow it with a fixed difference: vertical prints ${VERTICAL_DIFF_TEXT} than horizontal; the front tray prints like the back tray. Moving a field moves it in all four. The other tabs are read-only.`,
+    `One X / Y for the cheque book, set on the main tab (back tray, horizontal) or with the arrows. The other three follow it; the printer calibration (Settings) already makes vertical and the other tray land right. Moving a field moves it in all four. The other tabs are read-only.`,
   ],
   [
     'Manual setting',
     'Choose Manual on the cheque layout when one position needs something different. Every position then has its own fields and its own X / Y, and changing one never changes another. Switching to Manual keeps every position printing where it did; going back to Default keeps the main position and puts the others back on the fixed difference.',
   ],
   [
-    'Arrows',
-    'Each click moves the print 1 mm. In the default setting all four positions move together; in the manual setting only the position chosen above.',
+    'Arrows and X / Y (Option 2 · Manual adjustment)',
+    'A cheque book\'s own move of the whole print, on top of the printer calibration, for a cheque that still prints a little off. Each arrow click moves 1 mm. In the default setting all four positions move together; in the manual setting only the position chosen above. Cheque books set up before the printer calibration keep their own adjustments until you press "Use only the printer calibration".',
   ],
   [
     'Set up from a scan',
@@ -97,7 +104,7 @@ export function HelpAbout() {
     <section className="help">
       <div className="form">
         <h2>How to use Smart Cheque Printer</h2>
-        <p className="hint">Five steps for everyday use. The advanced settings are explained below.</p>
+        <p className="hint">Six steps: the first is done once per printer. The advanced settings are explained below.</p>
         <ol className="guide">
           {STEPS.map(([title, text]) => (
             <li key={title}>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
-import { fieldShift, layoutForPosition, MAIN_POSITION, mapAllPositions, modeOf, READY_POSITIONS, shiftFor, toDefault, toManual, VERTICAL_DIFF_TEXT, withPositionLayout, withShift, type Shift } from '../../shared/positions';
+import { fieldShift, layoutForPosition, MAIN_POSITION, mapAllPositions, modeOf, READY_POSITIONS, shiftFor, toDefault, toManual, verticalDiffText, withPositionLayout, withShift, type Shift } from '../../shared/positions';
 import { applyBank, bankBySize, crossingFor, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
 import { editableFields, moveDate, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
@@ -265,7 +265,7 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
               <span className="hint">
                 {manual
                   ? 'Manual: each position has its own fields and its own X / Y. Changing one never changes another.'
-                  : `Default: set the fields and X / Y on the main position; the other three follow it. Vertical prints ${VERTICAL_DIFF_TEXT} than horizontal.`}
+                  : `Default: set the fields and X / Y on the main position; the other three follow it. Vertical prints ${verticalDiffText(draft.layout)}.`}
               </span>
             </div>
             <div className="position-tabs" role="tablist" aria-label="Print position">
@@ -281,7 +281,7 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
             </div>
             <div className="row position-shift">
               <span className="hint">
-                {editable ? 'Print adjustment for this position (mm), moves the whole print:' : `Follows the main position${tab.endsWith('-v') ? `, ${VERTICAL_DIFF_TEXT}` : ''}. Change it on the main tab, or switch to Manual.`}
+                {editable ? 'Print adjustment for this position (mm), moves the whole print:' : `Follows the main position${tab.endsWith('-v') ? `, ${verticalDiffText(draft.layout)}` : ''}. Change it on the main tab, or switch to Manual.`}
               </span>
               <label>X →<input type="number" step="0.5" readOnly={!editable} value={tabShift.x} onChange={e => setTabShift({ x: Number(e.target.value), y: tabShift.y })} /></label>
               <label>Y ↑<input type="number" step="0.5" readOnly={!editable} value={tabShift.y} onChange={e => setTabShift({ x: tabShift.x, y: Number(e.target.value) })} /></label>

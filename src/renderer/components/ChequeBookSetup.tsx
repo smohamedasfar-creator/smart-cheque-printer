@@ -5,8 +5,9 @@ import { guessTray } from '../../shared/loading';
 import { correctPlacement, defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayKind } from '../../shared/print';
 import type { Account, ChequeLayout, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
+import { trayOffset } from '../../shared/printerCalibration';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
-import { adjustPosition, anyPositionSetUp, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, VERTICAL_DIFF_TEXT, withReadyPositions, withShift, type Shift } from '../../shared/positions';
+import { adjustPosition, anyPositionSetUp, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, hasOwnAdjustments, verticalDiffText, withoutOwnAdjustments, withReadyPositions, withShift, type Shift } from '../../shared/positions';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
 
@@ -228,7 +229,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
 
   /** Option 1: graph paper in mm over the cheque copy, counted from its bottom-left corner, to read where each line starts. */
   const printGraph = async () => {
-    const result = await window.chequeApi.print({ items: [], layout, settings, testPrint: false, graph: true, placement });
+    const result = await window.chequeApi.print({ items: [], layout, settings, testPrint: false, graph: true, placement, tray });
     if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
     setTestedFor(placement);
     setMessage({ kind: 'ok', text: 'Graph sent. On the printed copy, read where each line starts (red X, blue Y) and type it in "Where each field starts" above.' });
@@ -251,7 +252,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
 
   /** Advanced: the test page with the sample text and the calibration dots. */
   const printTestPage = async () => {
-    const result = await window.chequeApi.print({ items: sample.items, layout, settings, testPrint: false, calibrate: true, placement });
+    const result = await window.chequeApi.print({ items: sample.items, layout, settings, testPrint: false, calibrate: true, placement, tray });
     if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
     setTestedFor(placement);
     setMessage({ kind: 'ok', text: 'Test page sent. Scan the printed cheque (300 DPI) and choose the scan in step 3.' });
@@ -282,7 +283,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   };
 
   const testPrint = async (marks: boolean) => {
-    const result = await window.chequeApi.print({ items: sample.items, layout, settings, testPrint: marks, marks, placement });
+    const result = await window.chequeApi.print({ items: sample.items, layout, settings, testPrint: marks, marks, placement, tray });
     if (result.ok && !marks) setTested(true);
     const sent = marks
       ? 'Alignment test sent. Measure the gaps between the crosshairs with a ruler: if they match the printed numbers, the size is right and only the position needs fixing in step 3.'
@@ -310,7 +311,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
           How will you load the cheque?{' '}
           {manual
             ? 'Manual setting: each position has its own fields and X / Y; changing one never changes another.'
-            : `Default setting: one X / Y for all four; vertical prints ${VERTICAL_DIFF_TEXT} than horizontal. Switch to Manual in the cheque layout above to set each position on its own.`}
+            : `Default setting: one X / Y for all four; vertical prints ${verticalDiffText(layout)}. Switch to Manual in the cheque layout above to set each position on its own.`}
         </p>
         <div className="feed-options ready-positions">
           {READY_POSITIONS.map((r, i) => (
@@ -321,6 +322,17 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
             </button>
           ))}
         </div>
+        {trayOffset(settings, tray) ? (
+          <p className="success">✓ This printer is calibrated for the {tray === 'front' ? 'front tray' : tray === 'manual' ? 'manual slot' : 'back tray'}: cheques print in place, horizontal and vertical.</p>
+        ) : (
+          <p className="warning">The {tray === 'front' ? 'front tray' : tray === 'manual' ? 'manual slot' : 'back tray'} of this printer is not calibrated yet. Calibrate it once in Settings → Printer calibration (an A4 sheet, folded twice): every cheque book then prints in place.</p>
+        )}
+        {trayOffset(settings, tray) && hasOwnAdjustments(layout) && (
+          <p className="hint own-adjustments">
+            This cheque book still has its own adjustments from before the printer was calibrated (X / Y{modeOf(layout) === 'manual' ? ', manual positions' : ''}, vertical difference).{' '}
+            <button type="button" className="link" onClick={() => { onLayout(withoutOwnAdjustments(layout)); setMessage({ kind: 'ok', text: 'Now printing with the printer calibration only. Test print to check, then Save cheque book.' }); }}>Use only the printer calibration</button>
+          </p>
+        )}
         <p>Load a photocopy of this cheque as the picture shows, then use one of the two options:</p>
         <div className="setup-options">
           <div className="setup-option">
@@ -346,7 +358,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
               <button type="button" onClick={() => nudge(1, 0)} title="Move the print 1 mm right">→ Right</button>
               <span className="hint">1 mm each click</span>
             </div>
-            <span className="hint">{manual ? 'Moves this position only.' : `Moves all four positions together; vertical keeps its difference (${VERTICAL_DIFF_TEXT}).`}</span>
+            <span className="hint">{manual ? 'Moves this position only.' : `Moves all four positions together; vertical prints ${verticalDiffText(layout)}.`}</span>
           </li>
             </ol>
           </div>

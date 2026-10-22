@@ -13,7 +13,10 @@ import {
   shiftLayout,
   toDefault,
   toManual,
-  VERTICAL_DIFF,
+  hasOwnAdjustments,
+  LEGACY_VERTICAL_DIFF,
+  verticalDiff,
+  withoutOwnAdjustments,
   withPositionLayout,
   withReadyPositions,
   withShift,
@@ -56,22 +59,32 @@ describe('ready print positions', () => {
 });
 
 describe('default setting: one X / Y, fixed differences between positions', () => {
-  test('nothing set up: horizontal prints as laid out, vertical 7.5 mm higher and 6 mm further left', () => {
-    expect(VERTICAL_DIFF).toEqual({ x: -6, y: 7.5 });
-    expect(shiftFor(layout, 'rear-h')).toEqual({ x: 0, y: 0, auto: false });
-    expect(shiftFor(layout, 'rear-v')).toEqual({ x: -6, y: 7.5, auto: true });
-    expect(shiftFor(layout, 'front-h')).toEqual({ x: 0, y: 0, auto: true });
-    expect(shiftFor(layout, 'front-v')).toEqual({ x: -6, y: 7.5, auto: true });
+  test('a new cheque book: all four print as laid out (the printer calibration does the rest)', () => {
+    for (const k of ['rear-h', 'rear-v', 'front-h', 'front-v'] as const) expect(shiftFor(layout, k)).toMatchObject({ x: 0, y: 0 });
+    expect(verticalDiff(layout)).toEqual({ x: 0, y: 0 });
     expect(anyPositionSetUp(layout)).toBe(false);
+    expect(hasOwnAdjustments(layout)).toBe(false);
+  });
+
+  test('a cheque book that kept the 1.8 vertical difference: vertical 7.5 mm higher and 6 mm further left', () => {
+    const legacy = { ...layout, verticalDiff: { ...LEGACY_VERTICAL_DIFF } };
+    expect(shiftFor(legacy, 'rear-v')).toEqual({ x: -6, y: 7.5, auto: true });
+    expect(shiftFor(legacy, 'front-h')).toEqual({ x: 0, y: 0, auto: true });
+    expect(hasOwnAdjustments(legacy)).toBe(true);
+    // Only the printer calibration: the difference and every X / Y go.
+    const plain = withoutOwnAdjustments(withShift(legacy, 'rear-h', { x: 2, y: 1 }));
+    expect(hasOwnAdjustments(plain)).toBe(false);
+    expect(shiftFor(plain, 'rear-v')).toMatchObject({ x: 0, y: 0 });
   });
 
   test('one X / Y moves all four and keeps the difference, whichever position it is typed for', () => {
-    const L = withShift(layout, 'rear-h', { x: 1, y: -2 });
+    const legacy = { ...layout, verticalDiff: { ...LEGACY_VERTICAL_DIFF } };
+    const L = withShift(legacy, 'rear-h', { x: 1, y: -2 });
     expect(['rear-h', 'rear-v', 'front-h', 'front-v'].map(k => shiftFor(L, k as never))).toEqual([
       { x: 1, y: -2, auto: false }, { x: -5, y: 5.5, auto: true }, { x: 1, y: -2, auto: true }, { x: -5, y: 5.5, auto: true },
     ]);
     // Set from the vertical test print: the vertical gets exactly that, the horizontal keeps the difference.
-    const V = withShift(layout, 'rear-v', { x: 0.5, y: 7 });
+    const V = withShift(legacy, 'rear-v', { x: 0.5, y: 7 });
     expect(shiftFor(V, 'rear-v')).toMatchObject({ x: 0.5, y: 7 });
     expect(shiftFor(V, 'rear-h')).toMatchObject({ x: 6.5, y: -0.5 });
     expect(anyPositionSetUp(V)).toBe(true);
@@ -127,7 +140,7 @@ describe('manual setting: every position on its own', () => {
     const D = toDefault(M);
     expect(modeOf(D)).toBe('default');
     expect(layoutForPosition(D, 'rear-h').payee).toEqual(layoutForPosition(M, 'rear-h').payee);
-    expect(shiftFor(D, 'rear-v')).toEqual({ x: VERTICAL_DIFF.x, y: 1 + VERTICAL_DIFF.y, auto: true });
+    expect(shiftFor(D, 'rear-v')).toEqual({ x: 0, y: 1, auto: true });
   });
 });
 

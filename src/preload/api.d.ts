@@ -25,6 +25,8 @@ export interface PrintJob {
   graph?: boolean;
   /** The cheque book's own feed direction and page position, when set. */
   placement?: PagePlacement;
+  /** The tray the cheque is loaded in: its printer calibration moves the print into place. */
+  tray?: 'rear' | 'front' | 'manual';
 }
 
 export interface ChequeApi {
@@ -49,6 +51,8 @@ export interface ChequeApi {
   printCalibration(printerName: string): Promise<{ ok: boolean; error?: string }>;
   /** Prints the A4 ruler sheet to lay a cheque on for a phone photo. */
   printRulerSheet(printerName: string): Promise<{ ok: boolean; error?: string }>;
+  /** The A4 printer calibration sheet, folded in half each way to read the printer's offset. */
+  printFoldSheet(printerName: string, trayTitle: string): Promise<{ ok: boolean; error?: string }>;
   exportCsv(csv: string): Promise<{ saved: boolean; path?: string }>;
   appInfo(): Promise<{ version: string; dataFolder: string }>;
   openLink(link: 'email' | 'whatsapp' | 'call' | 'support' | 'source'): Promise<void>;

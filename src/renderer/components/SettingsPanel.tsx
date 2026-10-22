@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PrinterSetup } from './PrinterSetup';
 import { amountInWords } from '../../shared/amountInWords';
 import { TEXT_SIZES } from '../../shared/chequeRender';
 import { DEFAULT_SETTINGS, type PrintSettings } from '../../shared/types';
@@ -228,7 +229,13 @@ export function SettingsPanel({ settings, onSave }: Props) {
         </select>
       </label>
 
-      <p className="hint">Where the cheque sits in the printer is set up for each cheque book: Cheque Books → Details → Print test page, then choose the scan of it.</p>
+      <PrinterSetup
+        settings={draft}
+        onApply={async next => {
+          setDraft(next);
+          await onSave(next);
+        }}
+      />
 
       <details className="advanced">
         <summary>Advanced: ruler calibration and paper settings (older method)</summary>
