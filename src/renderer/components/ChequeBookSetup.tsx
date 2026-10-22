@@ -7,7 +7,7 @@ import type { Account, ChequeLayout, FeedRotation, NewAccount, PrintPosition, Pr
 import { createMeasure } from '../measure';
 import { trayOffset } from '../../shared/printerCalibration';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
-import { adjustPosition, anyPositionSetUp, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, hasOwnAdjustments, verticalDiffText, withoutOwnAdjustments, withReadyPositions, withShift, type Shift } from '../../shared/positions';
+import { activePositionIndex, adjustPosition, anyPositionSetUp, markActive, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, hasOwnAdjustments, verticalDiffText, withoutOwnAdjustments, withReadyPositions, withShift, type Shift } from '../../shared/positions';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
 
@@ -34,10 +34,7 @@ interface SetupProps {
   bind: (read: () => BookDraft) => void;
 }
 
-/** Index of the saved position the cheque book is using now, if any. */
-export function activePositionIndex(a: Pick<Account, 'positions' | 'feedRotation' | 'pageX' | 'pageY'>): number {
-  return a.positions.findIndex(p => p.rotation === a.feedRotation && p.x === a.pageX && p.y === a.pageY);
-}
+export { activePositionIndex } from '../../shared/positions';
 
 const TRAYS: Array<{ value: TrayKind; title: string; hint: string }> = [
   { value: 'rear', title: 'Back tray', hint: 'Paper stands up behind the printer, printed side facing you (most ink tank printers)' },
@@ -190,7 +187,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
       positions[idx] = c;
     }
     setActiveIdx(idx);
-    return { ...draft, feedRotation: c.rotation, pageX: c.x, pageY: c.y, positions };
+    return { ...draft, feedRotation: c.rotation, pageX: c.x, pageY: c.y, positions: markActive(positions, idx) };
   };
 
 

@@ -299,3 +299,15 @@ function toVersion3(layout: ChequeLayout, positions: readonly PrintPosition[]): 
 export function resetShift(layout: ChequeLayout, key: PositionKey): ChequeLayout {
   return modeOf(layout) === 'manual' ? withShift(layout, key, ZERO) : { ...layout, positionShifts: {} };
 }
+
+/** Index of the position the cheque book prints with now: the one marked active at its page placement, else the first there. */
+export function activePositionIndex(a: { positions: readonly PrintPosition[]; feedRotation: FeedRotation | null; pageX: number | null; pageY: number | null }): number {
+  const here = (p: PrintPosition) => p.rotation === a.feedRotation && p.x === a.pageX && p.y === a.pageY;
+  const marked = a.positions.findIndex(p => p.active === true && here(p));
+  return marked >= 0 ? marked : a.positions.findIndex(here);
+}
+
+/** The positions with `index` marked as the one the cheque book prints with. */
+export function markActive(positions: readonly PrintPosition[], index: number): PrintPosition[] {
+  return positions.map((p, i) => ({ ...p, active: i === index }));
+}

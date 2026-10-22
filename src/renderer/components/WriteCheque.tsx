@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatAmount, parseAmountToFils } from '../../shared/amountInWords';
 import { crossingFor } from '../../shared/banks';
 import { renderCheque, splitIntoWords } from '../../shared/chequeRender';
-import { adjustPosition, anyPositionSetUp, migratePositions, layoutForPosition, placementToShift, positionKeyOf, READY_POSITIONS, shiftFor, withReadyPositions, withShift } from '../../shared/positions';
+import { adjustPosition, anyPositionSetUp, markActive, migratePositions, layoutForPosition, placementToShift, positionKeyOf, READY_POSITIONS, shiftFor, withReadyPositions, withShift } from '../../shared/positions';
 import { LEADING_EDGE, nextChequeNo, pageGeometry, pageToTray, printProblems, type Placement } from '../../shared/print';
 import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
@@ -51,7 +51,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
   const choosePosition = async (i: number) => {
     const p = positions[i];
     if (!account || !p) return;
-    await window.chequeApi.saveAccount({ ...account, positions, feedRotation: p.rotation, pageX: p.x, pageY: p.y });
+    await window.chequeApi.saveAccount({ ...account, positions: markActive(positions, i), feedRotation: p.rotation, pageX: p.x, pageY: p.y });
     onPrinted();
   };
 

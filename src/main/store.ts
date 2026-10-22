@@ -112,7 +112,8 @@ function isPosition(p: unknown): p is PrintPosition {
   return (
     Boolean(v) && typeof v.name === 'string' && ROTATIONS.includes(v.rotation) && Number.isFinite(v.x) && Number.isFinite(v.y) &&
     (v.tray === undefined || TRAYS.includes(v.tray)) &&
-    (v.calibrated === undefined || typeof v.calibrated === 'boolean')
+    (v.calibrated === undefined || typeof v.calibrated === 'boolean') &&
+    (v.active === undefined || typeof v.active === 'boolean')
   );
 }
 

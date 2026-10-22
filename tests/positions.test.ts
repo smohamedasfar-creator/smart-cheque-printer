@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
+  activePositionIndex,
   adjustPosition,
+  markActive,
   anyPositionSetUp,
   layoutForPosition,
   mapAllPositions,
@@ -182,5 +184,18 @@ describe('older cheque books are brought up to date once', () => {
     // Manual cheque books keep every position as it was.
     const manual = { ...old, positionMode: 'manual' as const, positionShifts: { 'rear-v': { x: 2, y: 2 } } };
     expect(migratePositions(manual, []).layout.positionShifts).toEqual(manual.positionShifts);
+  });
+});
+
+describe('the position the cheque book prints with', () => {
+  test('back and front tray at the same page place are told apart by the chosen one', () => {
+    const list = withReadyPositions(layout, []);
+    const [rearH, , frontH] = list;
+    // Horizontal in the back and front tray put the cheque at the same place on the page.
+    expect([frontH.rotation, frontH.x, frontH.y]).toEqual([rearH.rotation, rearH.x, rearH.y]);
+    const at = { feedRotation: frontH.rotation, pageX: frontH.x, pageY: frontH.y };
+    expect(activePositionIndex({ ...at, positions: list })).toBe(0);
+    expect(activePositionIndex({ ...at, positions: markActive(list, 2) })).toBe(2);
+    expect(markActive(list, 2).filter(p => p.active).map(p => p.tray)).toEqual(['front']);
   });
 });

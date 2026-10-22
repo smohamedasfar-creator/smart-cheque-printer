@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PrinterSetup } from './PrinterSetup';
+import { DEFAULT_REMINDER_DAYS, MAX_REMINDER_DAYS } from '../../shared/payments';
 import { amountInWords } from '../../shared/amountInWords';
 import { TEXT_SIZES } from '../../shared/chequeRender';
 import { DEFAULT_SETTINGS, type PrintSettings } from '../../shared/types';
@@ -220,6 +221,11 @@ export function SettingsPanel({ settings, onSave }: Props) {
         <FontPicker value={draft.fontFamily} onChange={v => set('fontFamily', v)} />
       </div>
 
+      <h2>Cheque reminders</h2>
+      <ReminderDays days={draft.reminderDays ?? [...DEFAULT_REMINDER_DAYS]} onChange={days => set('reminderDays', days)} />
+      <label className="check"><input type="checkbox" checked={draft.reminderNotifications !== false} onChange={e => set('reminderNotifications', e.target.checked)} /> Show a Windows notification when a cheque is due (also on the day, and after it until marked cleared)</label>
+      <p className="hint">The Payments tab lists the reminders and how much is to be paid each month. Press Save settings to keep changes.</p>
+
       <h2>Printer</h2>
       <label>
         Printer
@@ -290,5 +296,32 @@ export function SettingsPanel({ settings, onSave }: Props) {
         {saved && <span className="success">Saved.</span>}
       </div>
     </section>
+  );
+}
+
+/** Any number of reminders, each a number of days before the cheque date (e.g. 30, 15, 7, 3, 1). */
+function ReminderDays({ days, onChange }: { days: number[]; onChange: (days: number[]) => void }) {
+  const [input, setInput] = useState('');
+  const sorted = [...days].sort((a, b) => b - a);
+  const add = () => {
+    const d = Math.round(Number(input));
+    if (!(d >= 1 && d <= MAX_REMINDER_DAYS) || days.includes(d)) return;
+    onChange([...days, d].sort((a, b) => b - a));
+    setInput('');
+  };
+  return (
+    <div className="reminder-days">
+      <span>Remind me</span>
+      {sorted.map(d => (
+        <span key={d} className="chip reminder-chip">
+          {d} day{d === 1 ? '' : 's'} before
+          <button type="button" className="link" aria-label={`Remove the ${d} day reminder`} onClick={() => onChange(days.filter(x => x !== d))}>×</button>
+        </span>
+      ))}
+      {sorted.length === 0 && <span className="hint">only on the cheque date</span>}
+      <input type="number" min="1" max={MAX_REMINDER_DAYS} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} placeholder="days, e.g. 30" />
+      <button type="button" onClick={add}>Add reminder</button>
+      <span className="hint">and on the cheque date.</span>
+    </div>
   );
 }

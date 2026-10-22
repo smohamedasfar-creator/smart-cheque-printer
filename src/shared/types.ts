@@ -145,6 +145,10 @@ export interface PrintSettings {
    * page (mm, x right, y towards the end of the page). Measured once with the folded A4 sheet.
    */
   printerOffsets?: Record<string, Partial<Record<'rear' | 'front' | 'manual', { x: number; y: number }>>>;
+  /** Days before a cheque's date to remind (default 15 and 7). */
+  reminderDays?: number[];
+  /** Show a Windows notification when a cheque reaches a reminder (default on). */
+  reminderNotifications?: boolean;
 }
 
 export const DEFAULT_SETTINGS: PrintSettings = {
@@ -221,6 +225,11 @@ export interface PrintPosition {
   tray?: 'rear' | 'front' | 'manual';
   /** Set when a scanned test print confirmed where the cheque sits in the printer. */
   calibrated?: boolean;
+  /**
+   * The position the cheque book prints with now. Tells apart positions at the same place on the page (the back and front
+   * tray, horizontal, can be), which the page placement alone cannot.
+   */
+  active?: boolean;
   rotation: FeedRotation;
   /** Top-left of the leaf's footprint on the A4 page, in mm. */
   x: number;

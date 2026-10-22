@@ -333,6 +333,12 @@ async function run(win) {
   // choose the word that starts line 2 of the amount in words
   await js(win, "[...document.querySelectorAll('.word-break .word')][4]?.click()");
   await shot(win, '5b-write-cheque-break');
+  // Front tray in Write Cheque: the loading picture follows the chosen position and plays its animation.
+  await js(win, "(() => { const sel = [...document.querySelectorAll('label')].find(l => l.textContent.startsWith('Print position')).querySelector('select'); const opt = [...sel.options].find(o => o.textContent.startsWith('Front tray · Horizontal')); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, opt.value); sel.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await wait(1500);
+  check('write: front tray picture shown for the front position', await js(win, "Boolean(document.querySelector('.tray.tray-front'))"), true);
+  check('write: front tray cheque turns over', await js(win, "Boolean(document.querySelector('.tray-front .tray-cheque-turn.turn-over')) && getComputedStyle(document.querySelector('.tray-front .tray-cheque-turn')).animationName"), 'scp-cheque-turn-over');
+  if (process.env.SMOKE_FRAMES) await frames(win, '5c-write-front');
 
   // history and payees with sample data
   const accounts = await js(win, 'window.chequeApi.listAccounts()');
@@ -378,7 +384,42 @@ async function run(win) {
   await js(win, "window.chequeApi.deletePayee('Sample Supplier LLC')");
   const payees = await js(win, 'window.chequeApi.listPayees()');
   check('payee add/rename/delete', JSON.stringify(payees), JSON.stringify(['Acme Gulf Contracting LLC', 'Test Payee Renamed']));
+  // Payments: reminders 15 and 7 days before, and the month's total to pay.
+  const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'payments.js'));
+  const today = P.todayIso();
+  const inDays = n => { const d = new Date(`${today}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  await js(win, `window.chequeApi.recordCheque({ accountId: ${accounts[0].id}, chequeNo: '000140', date: '${inDays(5)}', payee: 'Due Soon LLC', amountFils: 150000, crossing: 'none', remark: '' })`);
+  await js(win, `window.chequeApi.recordCheque({ accountId: ${accounts[0].id}, chequeNo: '000141', date: '${inDays(12)}', payee: 'Due Later LLC', amountFils: 250000, crossing: 'none', remark: '' })`);
+  await js(win, `window.chequeApi.recordCheque({ accountId: ${accounts[0].id}, chequeNo: '000142', date: '${inDays(40)}', payee: 'Far Away LLC', amountFils: 990000, crossing: 'none', remark: '' })`);
+  await click(win, 'Write Cheque');
+  await click(win, 'Cheque Books');
+  await wait(300);
+  const all = await js(win, 'window.chequeApi.listCheques({})');
+  const due = P.dueReminders(all, today);
+  check('payments: tab shows how many reminders', await js(win, "document.querySelector('.tab-badge')?.textContent"), String(due.length));
+  await js(win, "[...document.querySelectorAll('nav button')].find(b => b.textContent.startsWith('Payments')).click()");
+  await wait(400);
+  check('payments: reminders listed soonest first', await js(win, "[...document.querySelectorAll('.reminders tbody tr')].map(r => r.children[3].textContent).join(' | ')"), due.map(r => r.cheque.payee).join(' | '));
+  check('payments: 5 and 12 days ahead are reminded, 40 days is not', await js(win, "(() => { const t = document.querySelector('.reminders').textContent; return t.includes('Due Soon LLC') && t.includes('Due Later LLC') && !t.includes('Far Away LLC'); })()"), true);
+  const month = P.monthReport(all, today.slice(0, 7));
+  check('payments: to pay this month', await js(win, "document.querySelector('.pay-card.to-pay strong').textContent"), require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'amountInWords.js')).formatAmount(month.toPayFils));
+  await shot(win, '7c-payments');
+  // Mark cleared: it leaves the reminders.
+  const first = await js(win, "document.querySelector('.reminders tbody tr td:nth-child(4)').textContent");
+  await click(win, 'Mark cleared');
+  await wait(400);
+  check('payments: a cleared cheque leaves the reminders', await js(win, `![...document.querySelectorAll('.reminders tbody tr td:nth-child(4)')].some(td => td.textContent === ${JSON.stringify(first)})`), true);
   await click(win, 'Settings');
+  check('settings: reminders 15 and 7 days before by default', await js(win, "[...document.querySelectorAll('.reminder-chip')].map(c => c.textContent.replace('×', '').trim()).join(',')"), '15 days before,7 days before');
+  // Any number of reminders: add 30 and 1 day, remove 15.
+  for (const d of ['30', '1']) {
+    await setField(win, '.reminder-days input', d);
+    await click(win, 'Add reminder');
+  }
+  await js(win, "document.querySelector('[aria-label=\"Remove the 15 day reminder\"]').click()");
+  await click(win, 'Save settings');
+  await wait(300);
+  check('settings: any reminder days', JSON.stringify((await js(win, 'window.chequeApi.getSettings()')).reminderDays), JSON.stringify([30, 7, 1]));
   await js(win, "[...document.querySelectorAll('h2')].find(h => h.textContent === 'Amount and text').scrollIntoView()");
   await shot(win, '8a-settings-text');
   check('font list has installed fonts', await js(win, "document.querySelectorAll('select option').length > 30"), true);

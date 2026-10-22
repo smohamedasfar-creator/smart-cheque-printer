@@ -24,6 +24,10 @@ const STEPS: Array<[string, string]> = [
     'Write Cheque → choose the cheque book and how the cheque is loaded, enter payee, amount and date, and press Print cheque. The preview shows where the text lands; the picture shows how to load the cheque.',
   ],
   [
+    'Payments and reminders',
+    'The Payments tab shows the cheques due soon and how much has to be paid each month: to pay (printed, not yet cleared), already cleared and the total, per cheque book, and the coming months. You are reminded 15 and 7 days before a cheque\'s date, on the day, and after it until you mark it cleared; the tab shows how many, and Windows shows a notification. Set any reminder days you like in Settings → Cheque reminders. Press Mark cleared when the cheque has been paid.',
+  ],
+  [
     'Keep track',
     'History lists every printed cheque with totals. Mark cheques as cleared or void, delete mistakes, and export to Excel (CSV). Payees keeps your saved payee names.',
   ],
@@ -105,7 +109,7 @@ export function HelpAbout() {
     <section className="help">
       <div className="form">
         <h2>How to use Smart Cheque Printer</h2>
-        <p className="hint">Six steps: the first is done once per printer. The advanced settings are explained below.</p>
+        <p className="hint">Seven steps: the first is done once per printer. The advanced settings are explained below.</p>
         <ol className="guide">
           {STEPS.map(([title, text]) => (
             <li key={title}>

@@ -204,10 +204,14 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow?.focus();
   });
 
+  // Windows shows notifications (cheque reminders) under the app's own name.
+  if (process.platform === 'win32') app.setAppUserModelId('com.smartcheque.printer');
+
   app.whenReady().then(async () => {
     try {
-      // Only the installed-font list is allowed (for the font picker); no camera, microphone, location or other access.
-      const allowed = (permission: string) => permission === 'local-fonts';
+      // Only the installed-font list (for the font picker) and notifications (cheque reminders); no camera, microphone,
+      // location or other access.
+      const allowed = (permission: string) => permission === 'local-fonts' || permission === 'notifications';
       session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed(permission)));
       session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed(permission));
       const dbPath = path.join(app.getPath('userData'), 'smart-cheque.sqlite');

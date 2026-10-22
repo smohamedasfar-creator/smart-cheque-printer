@@ -285,3 +285,21 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray-calibration-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 6px; }
 .tray-calibration-row { align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 .tray-calibration-row input { width: 90px; }
+.tab-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; background: #c0392b; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.payments { display: grid; gap: 16px; }
+.payments table { width: 100%; }
+.due-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: #eef2f7; }
+.due-overdue .due-badge, .due-today .due-badge { background: #fde2e1; color: #a12622; }
+.due-week .due-badge { background: #fff1d6; color: #8a5a00; }
+.due-soon .due-badge { background: #e7f0fb; color: #1d4f91; }
+.month-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.month-head h2 { margin: 0; min-width: 190px; text-align: center; }
+.pay-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0; }
+.pay-card { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border, #dde3ea); border-radius: 8px; background: var(--card, #fff); text-align: left; }
+.pay-card strong { font-size: 20px; }
+.pay-card.to-pay { border-color: #e0a53a; background: #fffaf0; }
+.by-account { margin-bottom: 12px; }
+.reminder-days input { width: 130px; }
+.reminder-days { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.reminder-chip { display: inline-flex; align-items: center; gap: 4px; }
+.reminder-chip button { padding: 0 2px; font-size: 15px; line-height: 1; }

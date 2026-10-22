@@ -40,6 +40,8 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 - Advanced: tray picture with a loading animation, feed direction, several saved positions, drag correction and alignment marks.
 - Cheques of any size: A4 page when the cheque fits, Letter or a page of its own size for wider cheques. Warns when text would
   land off the page or in the printer's unprintable edge; text never grows taller than its writing space or runs off the leaf.
+- **Payments and reminders**: cheques due soon (reminders any number of days before, 15 and 7 by default, on the day and
+  after it until cleared, with a Windows notification) and how much is to be paid each month, per cheque book.
 - **Payees** list (add, edit, delete) with autocomplete when writing cheques.
 - **History** with filters (customer name, date range, cheque number, cheque book), status (printed, cleared, void), delete, totals and CSV export.
 - **Backup and restore** of all data; **Help & About** page with a how-to guide.
