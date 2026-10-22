@@ -14,7 +14,7 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Set up printing once',
-    'Under Set up printing, Back tray · Horizontal is chosen. Load a photocopy of the cheque as the picture shows and press Test print. If the text is off the lines, press ↑ ↓ ← → (1 mm each) and test again until it sits on the lines. Press Save cheque book. The other three ways of loading (back tray vertical, front tray horizontal and vertical) are set up with it.',
+    'Under Set up printing, Back tray · Horizontal is chosen. Load a photocopy of the cheque as the picture shows and use one of the two options. Option 1 · Graph: Print graph, read on the printed copy where each line starts (red X, blue Y) and type the numbers in "Where each field starts". Option 2 · Manual adjustment: Test print, and if the text is off the lines press ↑ ↓ ← → (1 mm each) until it sits on them. Press Save cheque book. The other three ways of loading are set up with it.',
   ],
   [
     'Write and print',
@@ -38,7 +38,7 @@ const TIPS = [
 const ADVANCED: Array<[string, string]> = [
   [
     'Graph and X / Y',
-    'The cheque layout counts in mm from the cheque\'s bottom-left corner (0, 0): X to the right (red numbers), Y up (blue numbers). Each field starts at an X, Y and has a length. Print graph (step 2 of Set up printing) prints mm graph paper on a photocopy of the cheque: read where each line starts and type those numbers in "Where each field starts".',
+    'The cheque layout counts in mm from the cheque\'s bottom-left corner (0, 0): X to the right (red numbers), Y up (blue numbers). Each field starts at an X, Y and has a length. Print graph prints mm graph paper on a photocopy of the cheque in the same place as the text: the numbers you read where a line starts are exactly where the text will print, so type them in "Where each field starts". The picture of the cheque on screen can differ a little from the paper (the scan size, the printer\'s own offset); the graph shows the truth.',
   ],
   [
     'The four print positions',
@@ -55,10 +55,6 @@ const ADVANCED: Array<[string, string]> = [
   [
     'Arrows',
     'Each click moves the print 1 mm. In the default setting all four positions move together; in the manual setting only the position chosen above.',
-  ],
-  [
-    'Read the graph at the paper\'s corner',
-    'Advanced → after Print graph on plain paper cut to the cheque size, find the graph point that sits on the paper\'s bottom-left corner and type it: the app sets the X / Y exact to half a millimetre.',
   ],
   [
     'Set up from a scan',

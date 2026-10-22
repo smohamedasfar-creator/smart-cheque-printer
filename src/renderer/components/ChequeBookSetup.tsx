@@ -6,7 +6,6 @@ import { correctPlacement, defaultTrayView, LEADING_EDGE, pageGeometry, pageToTr
 import type { Account, ChequeLayout, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
-import { correctionFromCorner } from '../../shared/graph';
 import { adjustPosition, anyPositionSetUp, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, VERTICAL_DIFF_TEXT, withReadyPositions, withShift, type Shift } from '../../shared/positions';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
@@ -77,8 +76,6 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   /** The position the last test page was printed for: the scan is read against it. */
   const [testedFor, setTestedFor] = useState<Placement | null>(null);
   const scanInput = useRef<HTMLInputElement>(null);
-  /** The graph numbers read on the printed paper's bottom-left corner, as typed. */
-  const [corner, setCorner] = useState({ x: '', y: '' });
   /** How far the whole print was moved with the arrow buttons, in mm on the cheque (right and up positive). */
   const [moved, setMoved] = useState({ x: 0, y: 0 });
   /** A test print was made: saving after it means the user saw the print land in place. */
@@ -229,33 +226,15 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   // The screen's Save reads the cheque book with the position being edited written in.
   useEffect(() => bind(() => withCurrent('update')));
 
-  /** Step 2: graph paper in mm over the cheque copy, counted from its bottom-left corner, to read where each line starts. */
+  /** Option 1: graph paper in mm over the cheque copy, counted from its bottom-left corner, to read where each line starts. */
   const printGraph = async () => {
     const result = await window.chequeApi.print({ items: [], layout, settings, testPrint: false, graph: true, placement });
     if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
     setTestedFor(placement);
-    setCorner({ x: '', y: '' });
-    setMessage({ kind: 'ok', text: 'Graph sent. On the printed copy, read where each line starts (red X, blue Y) and type it in "Where each field starts" above. Advanced can also read the paper\'s bottom-left corner.' });
+    setMessage({ kind: 'ok', text: 'Graph sent. On the printed copy, read where each line starts (red X, blue Y) and type it in "Where each field starts" above.' });
   };
 
-  /** Advanced: the graph point on the paper's corner tells how far the print landed off; move it back by that. */
-  const applyCorner = () => {
-    const x = Number(corner.x);
-    const y = Number(corner.y);
-    if (corner.x.trim() === '' || corner.y.trim() === '' || !Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x) > 40 || Math.abs(y) > 40) {
-      setMessage({ kind: 'error', text: "Type the two graph numbers at the paper's bottom-left corner, for example X -1.5 and Y 2 (both 0 if the corner is exactly on 0, 0)." });
-      return;
-    }
-    const base = testedFor ?? placement;
-    const fixed = correctionFromCorner(layout, base, { x, y });
-    if (key) setShift(placementToShift(layout, base, fixed));
-    else adjustTo(fixed);
-    setTestedFor(null);
-    const moves = [x ? `${Math.abs(x)} mm ${x > 0 ? 'right' : 'left'}` : '', y ? `${Math.abs(y)} mm ${y > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(' and ');
-    setMessage({ kind: 'ok', text: `✓ Set up. ${moves ? `The print moves ${moves} on the cheque.` : 'The print was already in place.'} Press Save cheque book, then Test print to check.` });
-  };
-
-  /** Step 3: move the whole print on the cheque by 1 mm (right and up positive), whichever way it goes into the printer. */
+  /** Option 2: move the whole print on the cheque by 1 mm (right and up positive), whichever way it goes into the printer. */
   const nudge = (right: number, up: number) => {
     if (key) {
       const now = shiftFor(layout, key);
@@ -342,12 +321,21 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
             </button>
           ))}
         </div>
-        <ol className="setup-steps">
-          <li>Load a photocopy of this cheque (or plain paper cut to its size) as the picture shows.</li>
+        <p>Load a photocopy of this cheque as the picture shows, then use one of the two options:</p>
+        <div className="setup-options">
+          <div className="setup-option">
+            <h4>Option 1 · Graph</h4>
+            <ol className="setup-steps">
+              <li><button type="button" className="primary" onClick={printGraph} disabled={!!busy}>Print graph</button> on the cheque copy.</li>
+              <li>On the printed copy, read where each line starts: the red number is X, the blue number is Y.</li>
+              <li>Type them in &quot;Where each field starts&quot; in the cheque layout above. The text then prints exactly there.</li>
+            </ol>
+          </div>
+          <div className="setup-option">
+            <h4>Option 2 · Manual adjustment</h4>
+            <ol className="setup-steps">
           <li>
-            <button type="button" className="primary" onClick={() => testPrint(false)}>Test print</button>{' '}
-            <button type="button" onClick={printGraph} disabled={!!busy}>Print graph</button>
-            <span className="hint"> Test print shows where the text lands. Print graph prints mm graph paper on the cheque copy: read where each line starts (red X, blue Y) and type it in the field table above.</span>
+            <button type="button" className="primary" onClick={() => testPrint(false)}>Test print</button>
           </li>
           <li>
             Is the text on the cheque lines? If not, move the whole print and test again:
@@ -360,21 +348,16 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
             </div>
             <span className="hint">{manual ? 'Moves this position only.' : `Moves all four positions together; vertical keeps its difference (${VERTICAL_DIFF_TEXT}).`}</span>
           </li>
-          <li>When the text sits on the lines, press Save cheque book.</li>
-        </ol>
+            </ol>
+          </div>
+        </div>
+        <p className="hint">When the text sits on the lines, press Save cheque book.</p>
         {busy && <div className="busy">{busy}</div>}
         {message && <p className={message.kind === 'ok' ? 'success' : 'error'}>{message.text}</p>}
         {onPage.map(w => <p key={w} className="warning">{w}</p>)}
 
         <details className="advanced" onToggle={e => setAdvanced((e.target as HTMLDetailsElement).open)}>
           <summary>Advanced: tray, direction and manual adjustment</summary>
-          <h3>Read the graph at the paper's corner</h3>
-          <p className="hint">After Print graph (step 2) on plain paper cut to the cheque size: find the graph point that sits exactly on its <b>bottom-left corner</b> (count the small mm lines from the nearest numbered lines), type it and Apply.</p>
-          <div className="row corner-reading">
-            <label>X (red)<input type="number" step="0.5" value={corner.x} onChange={e => setCorner(c => ({ ...c, x: e.target.value }))} placeholder="e.g. -1.5" /></label>
-            <label>Y (blue)<input type="number" step="0.5" value={corner.y} onChange={e => setCorner(c => ({ ...c, y: e.target.value }))} placeholder="e.g. 2" /></label>
-            <button type="button" className="primary" onClick={applyCorner}>Apply</button>
-          </div>
           <h3>Set up from a scan instead</h3>
           <p className="hint">Print a test page with dot rows, scan the printed cheque at 300 DPI on a flatbed scanner and choose the scan: the app reads where the ink landed.</p>
           <div className="actions">

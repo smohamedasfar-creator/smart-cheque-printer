@@ -116,7 +116,8 @@ async function addChequeBook(win, file, name, index) {
   check('layout and details on one screen', await js(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details') && Boolean(document.querySelector('.template-editor'))"), true);
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   // The simple view: three steps up front, the technical settings closed away.
-  check('details: test print is the first step', await js(win, "document.querySelector('.setup-steps button')?.textContent"), 'Test print');
+  check('details: two options, graph or manual adjustment', await js(win, "[...document.querySelectorAll('.setup-option h4')].map(h => h.textContent).join(' | ')"), 'Option 1 · Graph | Option 2 · Manual adjustment');
+  check('details: one X / Y only (no corner reading)', await js(win, "Boolean(document.querySelector('.corner-reading'))"), false);
   check('details: four ready positions offered', await js(win, "[...document.querySelectorAll('.ready-positions .feed-option')].map(b => b.querySelector('strong').textContent + ' ' + b.querySelector('span').textContent).join(' | ')"), 'Back tray · main Horizontal · top edge first | Back tray Vertical · date end first | Front tray Horizontal · top edge first | Front tray Vertical · date end first');
   check('details: main position (back tray, horizontal) chosen for a new cheque book', await js(win, "document.querySelector('.ready-positions .feed-option.active')?.textContent.startsWith('Back tray · mainHorizontal')"), true);
   check('details: four arrows move the print', await js(win, "document.querySelectorAll('.setup-steps .nudge button').length"), 4);
@@ -203,25 +204,32 @@ async function moveByArrows(win, name, index) {
   check(`${name}: four ready positions saved`, after.positions.length >= 4, true);
 }
 
-/** The graph path: type the corner reading of a printed graph, Apply, Save: it becomes the position's adjustment. */
+/**
+ * The graph option: the date line was read on the printed graph 4 mm right of and 6 mm below where the layout puts it.
+ * Typing that reading in the field table makes the date print exactly there; nothing else moves.
+ */
 async function calibrateByGraph(win, name, index) {
   const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'positions.js'));
-  const before = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const G = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'graph.js'));
+  const account = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const before = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === account.templateId).layout;
+  const date = L => (L.date.mode === 'line' ? L.date.box : L.date.boxes[0]);
+  const was = G.graphStart(date(P.layoutForPosition(before, 'rear-h')), before.chequeHeight);
+  const read = { x: Math.round(was.x + 4), y: Math.round(was.y - 6) };
   await openDetails(win, name);
-  await setField(win, '.corner-reading input', '-1.5');
-  await js(win, "(() => { const el = document.querySelectorAll('.corner-reading input')[1]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '2'); el.dispatchEvent(new Event('input', { bubbles: true })); })()");
-  await click(win, 'Apply');
-  await wait(200);
-  const said = await js(win, "[...document.querySelectorAll('.form .success')].map(p => p.textContent).join(' ')");
-  check(`${name}: graph reading applied`, said.includes('1.5 mm left and 2 mm up'), true);
-  await js(win, "document.querySelector('.corner-reading').scrollIntoView({ block: 'center' })");
-  await shot(win, `${index}h-graph-applied`);
+  const setRow = (col, value) => js(win, `(() => { const el = document.querySelectorAll('.graph-table tbody tr')[0].querySelectorAll('input')[${col}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '${value}'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await setRow(0, read.x);
+  await wait(100);
+  await setRow(1, read.y);
+  await wait(150);
+  await shot(win, `${index}h-graph-typed`);
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
-  const after = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
-  const layout = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === after.templateId).layout;
-  check(`${name}: graph reading is the position's setting`, JSON.stringify(P.shiftFor(layout, 'rear-h')), JSON.stringify({ x: -1.5, y: 2, auto: false }));
-  check(`${name}: page placement stays plain after the graph`, JSON.stringify([after.feedRotation, after.pageX, after.pageY]), JSON.stringify([before.feedRotation, before.pageX, before.pageY]));
+  const after = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === account.templateId).layout;
+  const now = G.graphStart(date(P.layoutForPosition(after, 'rear-h')), after.chequeHeight);
+  check(`${name}: date prints where the graph was read`, JSON.stringify([now.x, now.y]), JSON.stringify([read.x, read.y]));
+  const payee = L => JSON.stringify(P.layoutForPosition(L, 'rear-h').payee);
+  check(`${name}: other fields stay where they were`, payee(after), payee(before));
 }
 
 /** Manual setting: the vertical position gets its own X / Y and its own field, and the horizontal one does not change. */
