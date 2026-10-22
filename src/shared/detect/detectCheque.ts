@@ -68,20 +68,29 @@ function longestRun(pass: boolean[], maxGap: number): [number, number] | null {
 /** Longest gap in the paper, as a share of the scan, that still counts as one leaf (a printed bar across it). */
 const BAR_GAP_SHARE = 0.03;
 
+/** A side of the scan this plain is the scanner lid, even when the cheque covers the other sides. */
+const LID_SIDE_PLAIN = 0.97;
+
+/** A cheque touching the scan's edge must leave at least one side of the scan this much uncovered. */
+const EDGE_REGION_SHARE = 0.75;
+
 /** A found cheque must span at least this share of the scan's longer side. */
 const MIN_CHEQUE_SHARE = 0.4;
 
 /** Finds the paper inside a scan by its difference from the scanner background. */
 export function findChequeRegion(img: Raster): { rect: Rect; cropped: boolean } {
   const { width: w, height: h, data } = img;
-  const border: number[] = [];
   const band = Math.max(2, Math.round(Math.min(w, h) * 0.01));
-  for (let x = 0; x < w; x += 3) for (let k = 0; k < band; k++) border.push(data[k * w + x], data[(h - 1 - k) * w + x]);
-  for (let y = 0; y < h; y += 3) for (let k = 0; k < band; k++) border.push(data[y * w + k], data[y * w + w - 1 - k]);
+  const sides: number[][] = [[], [], [], []];
+  for (let x = 0; x < w; x += 3) for (let k = 0; k < band; k++) { sides[0].push(data[k * w + x]); sides[1].push(data[(h - 1 - k) * w + x]); }
+  for (let y = 0; y < h; y += 3) for (let k = 0; k < band; k++) { sides[2].push(data[y * w + k]); sides[3].push(data[y * w + w - 1 - k]); }
+  const border = sides.flat();
   const bg = median(border);
-  // A scanner lid or table is plain; when the border is printed paper, the upload is already cropped.
-  const uniform = border.filter(v => Math.abs(v - bg) <= 8).length / border.length;
-  if (uniform < 0.9) return { rect: { x: 0, y: 0, width: w, height: h }, cropped: true };
+  const plain = (v: number[]) => v.filter(p => Math.abs(p - bg) <= 8).length / v.length;
+  // A scanner lid or table is plain; when the border is printed paper, the upload is already cropped. A cheque laid
+  // against the edge of the glass covers part of the border, but the lid still shows plainly along another side.
+  const touchesEdge = plain(border) < 0.9;
+  if (touchesEdge && !sides.some(v => plain(v) >= LID_SIDE_PLAIN)) return { rect: { x: 0, y: 0, width: w, height: h }, cropped: true };
 
   const isPaper = bg >= 200 ? (v: number) => v < bg - 6 : (v: number) => v > bg + 40;
   const rowCount = new Array<number>(h).fill(0);
@@ -98,7 +107,9 @@ export function findChequeRegion(img: Raster): { rect: Rect; cropped: boolean } 
   // Even a small cheque on an A4 scan covers about half of its long side. A smaller patch is something printed
   // on a pale cheque that fills the whole image (e.g. a dark logo), so the upload is already cropped.
   const tooSmall = Math.max(rect.width, rect.height) < Math.max(w, h) * MIN_CHEQUE_SHARE;
-  const cropped = tooSmall || (rect.width > w * 0.92 && rect.height > h * 0.92);
+  // Against an edge, the cheque must leave plenty of lid showing; otherwise the plain side is the margin of a cropped cheque.
+  const fillsImage = touchesEdge ? rect.width > w * EDGE_REGION_SHARE && rect.height > h * EDGE_REGION_SHARE : rect.width > w * 0.92 && rect.height > h * 0.92;
+  const cropped = tooSmall || fillsImage;
   return cropped ? { rect: { x: 0, y: 0, width: w, height: h }, cropped: true } : { rect, cropped };
 }
 
@@ -434,7 +445,9 @@ export function detectCheque({ image, dpi, flip: forceFlip }: DetectInput): Dete
 
   const asIs = analyseUpright(upright, mmPerPx);
   const turned = analyseUpright(rotateQuarter(upright, 2), mmPerPx);
-  const flip = forceFlip ?? turned.score > asIs.score;
+  // The cheque-number line along the bottom edge settles up and down; without it, the printed lines and boxes do.
+  const micr = micrSide(upright);
+  const flip = forceFlip ?? (micr ? micr === 'top' : turned.score > asIs.score);
   const best = flip ? turned : asIs;
 
   if (!workDpi) warnings.push('This image does not record its scan resolution. Enter the cheque width measured with a ruler.');
@@ -450,4 +463,36 @@ export function detectCheque({ image, dpi, flip: forceFlip }: DetectInput): Dete
     guessed: best.guessed,
     warnings,
   };
+}
+
+/** Share of the cheque's height searched for the cheque-number (MICR) line along each long edge. */
+const MICR_BAND_SHARE = 0.14;
+
+/**
+ * Which long edge the cheque-number (MICR) line runs along: it is printed in black across most of the width, close to
+ * the cheque's bottom edge. Used to tell up from down when the printed lines alone do not. Null when unclear.
+ */
+export function micrSide(img: Raster): 'top' | 'bottom' | null {
+  const { width: w, height: h, data } = img;
+  const t = Math.min(LABEL_T, darkThreshold(img));
+  const band = Math.max(2, Math.round(h * MICR_BAND_SHARE));
+  const coverage = (y0: number) => {
+    let hit = 0;
+    let all = 0;
+    for (let x = Math.round(w * 0.08); x < w * 0.92; x++) {
+      all++;
+      for (let y = y0; y < y0 + band; y++) {
+        if (data[y * w + x] < t) {
+          hit++;
+          break;
+        }
+      }
+    }
+    return hit / all;
+  };
+  const top = coverage(0);
+  const bottom = coverage(h - band);
+  if (bottom > 0.25 && bottom > top * 1.5) return 'bottom';
+  if (top > 0.25 && top > bottom * 1.5) return 'top';
+  return null;
 }
