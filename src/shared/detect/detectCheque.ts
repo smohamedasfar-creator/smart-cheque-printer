@@ -65,6 +65,9 @@ function longestRun(pass: boolean[], maxGap: number): [number, number] | null {
   return best;
 }
 
+/** Longest gap in the paper, as a share of the scan, that still counts as one leaf (a printed bar across it). */
+const BAR_GAP_SHARE = 0.03;
+
 /** A found cheque must span at least this share of the scan's longer side. */
 const MIN_CHEQUE_SHARE = 0.4;
 
@@ -83,11 +86,12 @@ export function findChequeRegion(img: Raster): { rect: Rect; cropped: boolean } 
   const isPaper = bg >= 200 ? (v: number) => v < bg - 6 : (v: number) => v > bg + 40;
   const rowCount = new Array<number>(h).fill(0);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (isPaper(data[y * w + x])) rowCount[y]++;
-  const rows = longestRun(rowCount.map(c => c > w * 0.1), Math.round(h * 0.01));
+  // A dark bar printed across the whole leaf (e.g. above the cheque number band) must not cut the cheque short.
+  const rows = longestRun(rowCount.map(c => c > w * 0.1), Math.round(h * BAR_GAP_SHARE));
   if (!rows) return { rect: { x: 0, y: 0, width: w, height: h }, cropped: true };
   const inRows = new Array<number>(w).fill(0);
   for (let y = rows[0]; y <= rows[1]; y++) for (let x = 0; x < w; x++) if (isPaper(data[y * w + x])) inRows[x]++;
-  const cols = longestRun(inRows.map(c => c > (rows[1] - rows[0] + 1) * 0.03), Math.round(w * 0.01));
+  const cols = longestRun(inRows.map(c => c > (rows[1] - rows[0] + 1) * 0.03), Math.round(w * BAR_GAP_SHARE));
   if (!cols) return { rect: { x: 0, y: 0, width: w, height: h }, cropped: true };
 
   const rect = { x: cols[0], y: rows[0], width: cols[1] - cols[0] + 1, height: rows[1] - rows[0] + 1 };

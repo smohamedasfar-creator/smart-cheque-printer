@@ -2,12 +2,12 @@ import { useMemo, useRef, useState } from 'react';
 import { parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
-import { fieldShift } from '../../shared/positions';
+import { fieldShift, MAIN_POSITION, READY_POSITIONS, shiftFor, shiftLayout, VERTICAL_LIFT_MM, withPositionShift, type Shift } from '../../shared/positions';
 import { applyBank, bankBySize, crossingFor, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
 import { editableFields, moveDate, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
 import { graphStart, withGraphStart, type GraphPoint } from '../../shared/graph';
-import { CROSSING_LABELS, type ChequeLayout, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
+import { CROSSING_LABELS, type ChequeLayout, type ChequeTemplate, type CrossingOption, type PositionKey, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { chequeImageDataUrl, detectAsync, loadUpload, type LoadedUpload } from '../upload';
 import { ChequeCanvas } from './ChequeCanvas';
@@ -50,6 +50,19 @@ function graphRows(L: ChequeLayout): GraphRow[] {
 /** Millimetres shown to one decimal, as typed. */
 const tenth = (v: number) => Math.round(v * 10) / 10;
 
+const TAB_NAMES: Record<PositionKey, string> = {
+  'rear-h': 'Back · Horizontal (main)',
+  'rear-v': 'Back · Vertical',
+  'front-h': 'Front · Horizontal',
+  'front-v': 'Front · Vertical',
+};
+
+/** A position's adjustment in short, e.g. "→1 ↑3.5 mm". */
+function shiftText(s: Shift): string {
+  const parts = [s.x ? `${s.x > 0 ? '→' : '←'}${Math.abs(s.x)}` : '', s.y ? `${s.y > 0 ? '↑' : '↓'}${Math.abs(s.y)}` : ''].filter(Boolean);
+  return parts.length ? `${parts.join(' ')} mm` : 'as laid out';
+}
+
 const FIELD_NAMES: Record<string, string> = {
   payee: 'payee line', words1: 'first words line', words2: 'second words line',
   amount: 'amount box', date: 'date', bearer: '"or bearer" text',
@@ -59,8 +72,7 @@ interface EditorProps {
   initial: Draft;
   settings: PrintSettings;
   onCancel: () => void;
-  /** `fieldsMoved`: how far the fields went back onto the cheque lines (mm, right/down), for the print positions to take over. */
-  onSaved: (template: ChequeTemplate, fieldsMoved?: { x: number; y: number }) => Promise<void>;
+  onSaved: (template: ChequeTemplate) => Promise<void>;
   /** Label of the save button, e.g. "Next: cheque book details". */
   saveLabel?: string;
 }
@@ -76,6 +88,8 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
   /** A recognised bank and the layout detection found, to go back to it. */
   const [bank, setBank] = useState<{ bank: BankTemplate; detected: ChequeLayout } | null>(null);
   const [libraryApplied, setLibraryApplied] = useState(false);
+  /** The print position whose layout is shown: each prints the fields moved by its own adjustment. */
+  const [tab, setTab] = useState<PositionKey>(MAIN_POSITION);
   const [sample, setSample] = useState({ payee: 'Sample Trading LLC', amount: '12,345.50', date: new Date().toLocaleDateString('en-CA'), crossing: 'ac-payee-bearer' as CrossingOption });
   const fileInput = useRef<HTMLInputElement>(null);
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
@@ -84,11 +98,11 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
 
   const rendered = useMemo(() => {
     try {
-      return renderCheque(draft.layout, { payee: sample.payee, amountFils: parseAmountToFils(sample.amount) ?? 0, date: sample.date, crossing: sample.crossing }, settings, measure);
+      return renderCheque(shiftLayout(draft.layout, shiftFor(draft.layout, tab)), { payee: sample.payee, amountFils: parseAmountToFils(sample.amount) ?? 0, date: sample.date, crossing: sample.crossing }, settings, measure);
     } catch {
       return { items: [], warnings: ['Enter a valid sample date.'] };
     }
-  }, [draft.layout, sample, settings, measure]);
+  }, [draft.layout, tab, sample, settings, measure]);
 
   const runDetection = async (loaded: LoadedUpload, flip?: boolean) => {
     setBusy('Measuring the cheque and finding its fields…');
@@ -150,8 +164,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
     }
     try {
       const saved = await window.chequeApi.saveTemplate({ id: draft.id, name: draft.name, layout: draft.layout, image: draft.image });
-      // Fields put back on the lines after being shifted to suit a printer: the print positions take that shift over.
-      await onSaved(saved, libraryApplied ? fieldShift(initial.layout, draft.layout) : undefined);
+      await onSaved(saved);
     } catch (e) {
       setError(String(e));
     }
@@ -173,6 +186,20 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
   // An existing FAB or RAKBANK design can take the bank library's measured writing spaces in one click.
   // Known by its lines, or by its size when the fields were moved by hand (often to make up for where a printer prints).
   const libraryMatch = !detection && !isNew && !libraryApplied ? matchBank(draft.layout) ?? bankBySize(draft.layout) : null;
+  // The layout as it prints in the chosen position. Fields are edited on the main position; the others follow it.
+  const tabShift = shiftFor(draft.layout, tab);
+  const shown = shiftLayout(draft.layout, tabShift);
+  const onMain = tab === MAIN_POSITION;
+  const unshift = (L: ChequeLayout) => shiftLayout(L, { x: -tabShift.x, y: -tabShift.y });
+  const setTabShift = (s: Shift) => Number.isFinite(s.x) && Number.isFinite(s.y) && setLayout(withPositionShift(draft.layout, tab, s));
+  /** Puts every field on the bank's cheque lines; the print keeps its place through the main position's adjustment. */
+  const useLibrary = (bankTemplate: BankTemplate) => {
+    const applied = { ...applyBank(bankTemplate, draft.layout), positionShifts: draft.layout.positionShifts, positionsVersion: draft.layout.positionsVersion };
+    const moved = fieldShift(draft.layout, applied);
+    const main = shiftFor(draft.layout, MAIN_POSITION);
+    setLayout(moved.x || moved.y ? withPositionShift(applied, MAIN_POSITION, { x: main.x - moved.x, y: main.y + moved.y }) : applied);
+    setLibraryApplied(true);
+  };
   const field = selected ? editableFields(draft.layout).find(f => f.key === selected) : undefined;
   const setBox = (key: 'x' | 'y' | 'width' | 'height', value: number) =>
     field && Number.isFinite(value) && setLayout(updateField(draft.layout, field.key, { ...field.box, [key]: value }));
@@ -198,7 +225,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
             onDrop={e => { e.preventDefault(); onFile(e.dataTransfer.files[0]); }}
           >
             <strong>Drop a scan of a blank cheque here, or click to choose a file</strong>
-            <span>PDF, JPG or PNG. A full A4 scan or a cropped cheque both work. For exact sizes, scan at 300 DPI. With a phone, lay the cheque on the <button type="button" className="link" onClick={e => { e.stopPropagation(); window.chequeApi.printRulerSheet(settings.printerName); }}>ruler sheet</button> and take the photo from above.</span>
+            <span>PDF, JPG or PNG. A full A4 scan or a cropped cheque both work. For exact sizes, scan at 300 DPI with a dark sheet behind the cheque (or the lid open) so its edges show. With a phone, lay the cheque on the <button type="button" className="link" onClick={e => { e.stopPropagation(); window.chequeApi.printRulerSheet(settings.printerName); }}>ruler sheet</button> and take the photo from above.</span>
           </div>
         )}
         {busy && <div className="busy">{busy}</div>}
@@ -219,8 +246,8 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
         {libraryMatch && (
           <p className="hint">
             This is a {libraryMatch.name} cheque.{' '}
-            <button type="button" className="primary" onClick={() => { setLayout(applyBank(libraryMatch, draft.layout)); setLibraryApplied(true); }}>Put every field on the {libraryMatch.name} cheque lines</button>
-            <br />Each field should sit on its line in the picture. If the printed cheque comes out off, move the print in the cheque book&apos;s Set up printing, not the fields here.
+            <button type="button" className="primary" onClick={() => useLibrary(libraryMatch)}>Put every field on the {libraryMatch.name} cheque lines</button>
+            <br />The fields go back on the lines of the picture and the print keeps its place: the difference becomes the main position&apos;s setting below.
           </p>
         )}
         {bank && (
@@ -240,20 +267,43 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
 
         {hasLeaf && (
           <>
+            <div className="position-tabs" role="tablist" aria-label="Print position">
+              {READY_POSITIONS.map(r => {
+                const s = shiftFor(draft.layout, r.key);
+                return (
+                  <button key={r.key} type="button" role="tab" aria-selected={tab === r.key} className={tab === r.key ? 'active' : ''} onClick={() => { setTab(r.key); setSelected(null); }}>
+                    <strong>{TAB_NAMES[r.key]}</strong>
+                    <span>{s.auto ? 'Automatic' : 'Own setting'} · {shiftText(s)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="row position-shift">
+              <span className="hint">
+                {onMain ? 'Main position: the other three follow it.' : tabShift.auto ? `Follows the main position${tab.endsWith('-v') ? `, ${VERTICAL_LIFT_MM} mm higher because vertical prints lower` : ''}.` : 'Own setting for this position.'} Move the whole print:
+              </span>
+              <label>X →<input type="number" step="0.5" value={tabShift.x} onChange={e => setTabShift({ x: Number(e.target.value), y: tabShift.y })} /></label>
+              <label>Y ↑<input type="number" step="0.5" value={tabShift.y} onChange={e => setTabShift({ x: tabShift.x, y: Number(e.target.value) })} /></label>
+              {!onMain && !tabShift.auto && <button type="button" className="link" onClick={() => setLayout(withPositionShift(draft.layout, tab, null))}>Follow the main position</button>}
+            </div>
             <div className="canvas-wrap">
               <ChequeCanvas
-                layout={draft.layout}
+                layout={shown}
                 items={rendered.items}
                 fontFamily={settings.fontFamily}
                 image={draft.image}
-                editable
+                editable={onMain}
                 selected={selected}
                 onSelect={setSelected}
-                onChange={setLayout}
+                onChange={L => setLayout(unshift(L))}
                 graph
               />
             </div>
-            <p className="hint">Drag a box to move it, drag its corner to resize. Arrow keys move the selected box 0.5 mm (Shift: 0.1 mm). The cheque image is never printed.</p>
+            <p className="hint">
+              {onMain
+                ? 'Drag a box to move it, drag its corner to resize. Arrow keys move the selected box 0.5 mm (Shift: 0.1 mm). The cheque image is never printed.'
+                : 'This is where the text prints in this position. Change the fields on the main position; move the whole print here.'}
+            </p>
             {rendered.warnings.map(w => <p key={w} className="warning">{w}</p>)}
           </>
         )}
@@ -268,17 +318,17 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
             <label>Date<input type="date" value={sample.date} onChange={e => setSample(s => ({ ...s, date: e.target.value }))} /></label>
           </div>
 
-          <h3>Where each field starts</h3>
+          <h3>Where each field starts · {TAB_NAMES[tab]}</h3>
           <p className="hint">In mm from the cheque's bottom-left corner (0, 0): X across, Y up to the writing line. Length is where the line ends; longer text moves to the next line or gets smaller.</p>
           <table className="graph-table">
             <thead><tr><th>Field</th><th>X</th><th>Y</th><th>Length</th></tr></thead>
             <tbody>
-              {graphRows(draft.layout).map(row => (
+              {graphRows(shown).map(row => (
                 <tr key={row.key} className={selected === row.key ? 'selected' : ''}>
                   <td className="name" onClick={() => setSelected(row.key)}>{row.label}</td>
-                  <td><input type="number" step="0.5" value={row.start.x} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { x: Number(e.target.value) })} /></td>
-                  <td><input type="number" step="0.5" value={row.start.y} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { y: Number(e.target.value) })} /></td>
-                  <td>{row.fixedLength ? <span className="hint">{row.start.length}</span> : <input type="number" step="0.5" value={row.start.length} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { length: Number(e.target.value) })} />}</td>
+                  <td><input type="number" step="0.5" readOnly={!onMain} value={row.start.x} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { x: Number(e.target.value) - tabShift.x })} /></td>
+                  <td><input type="number" step="0.5" readOnly={!onMain} value={row.start.y} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { y: Number(e.target.value) - tabShift.y })} /></td>
+                  <td>{row.fixedLength ? <span className="hint">{row.start.length}</span> : <input type="number" step="0.5" readOnly={!onMain} value={row.start.length} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { length: Number(e.target.value) })} />}</td>
                 </tr>
               ))}
             </tbody>

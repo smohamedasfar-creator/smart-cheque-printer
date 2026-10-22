@@ -1,10 +1,13 @@
-// Ready-made print positions: every cheque book can print from the back tray and the front tray, standing
-// (vertical, date end first) or lying (horizontal, top edge first), without the user adding positions.
-import { editableFields } from './layoutFields';
-import { correctPlacement, defaultTrayView, trayToPage, TRAY_KINDS, type Placement, type TrayKind } from './print';
-import type { ChequeLayout, FeedRotation, PrintPosition } from './types';
+// Ready-made print positions: every cheque book can print from the back tray and the front tray, lying (horizontal,
+// top edge first) or standing (vertical, date end first), without the user adding positions. Each has its own
+// adjustment of the whole print, kept in the cheque layout; the main one is the back tray, horizontal, and the others
+// follow it until they are adjusted on their own.
+import { editableFields, updateField } from './layoutFields';
+import { chequePointOnPage, defaultTrayView, trayToPage, TRAY_KINDS, type Placement, type TrayKind } from './print';
+import type { ChequeLayout, FeedRotation, PositionKey, PrintPosition, PrintSettings } from './types';
 
 export interface ReadyPosition {
+  key: PositionKey;
   tray: TrayKind;
   /** The cheque edge that goes into the printer first. */
   leading: FeedRotation;
@@ -12,10 +15,10 @@ export interface ReadyPosition {
 }
 
 export const READY_POSITIONS: readonly ReadyPosition[] = [
-  { tray: 'rear', leading: 270, name: 'Back tray · Vertical (date end first)' },
-  { tray: 'rear', leading: 0, name: 'Back tray · Horizontal (top edge first)' },
-  { tray: 'front', leading: 270, name: 'Front tray · Vertical (date end first)' },
-  { tray: 'front', leading: 0, name: 'Front tray · Horizontal (top edge first)' },
+  { key: 'rear-h', tray: 'rear', leading: 0, name: 'Back tray · Horizontal (top edge first)' },
+  { key: 'rear-v', tray: 'rear', leading: 270, name: 'Back tray · Vertical (date end first)' },
+  { key: 'front-h', tray: 'front', leading: 0, name: 'Front tray · Horizontal (top edge first)' },
+  { key: 'front-v', tray: 'front', leading: 270, name: 'Front tray · Vertical (date end first)' },
 ];
 
 /** A ready position as printed: the cheque centred between the guides and pushed fully in. */
@@ -77,19 +80,96 @@ export function fieldShift(from: ChequeLayout, to: ChequeLayout): { x: number; y
   return { x: r(median(pairs.map(([a, b]) => b.x - a.x))), y: r(median(pairs.map(([a, b]) => b.y + b.height - (a.y + a.height)))) };
 }
 
+/** The main position: the others follow its adjustment until they are adjusted on their own. */
+export const MAIN_POSITION: PositionKey = 'rear-h';
+
+/** Printing vertically lands about this much lower on the cheque than horizontally, so vertical positions start this much higher. */
+export const VERTICAL_LIFT_MM = 3.5;
+
+export interface Shift {
+  /** mm to the right on the cheque */
+  x: number;
+  /** mm up on the cheque */
+  y: number;
+}
+
+const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
+const lift = (key: PositionKey): Shift => ({ x: 0, y: key.endsWith('-v') ? VERTICAL_LIFT_MM : 0 });
+
+/** A position's adjustment: its own, or the main one's (with the vertical lift), `auto` then true. */
+export function shiftFor(layout: ChequeLayout, key: PositionKey): Shift & { auto: boolean } {
+  const own = layout.positionShifts ?? {};
+  const mine = own[key];
+  if (mine) return { x: tenth(mine.x), y: tenth(mine.y), auto: false };
+  // The main adjustment: set directly, or worked out from whichever position was set up first.
+  const first = READY_POSITIONS.find(r => own[r.key]);
+  const main = own[MAIN_POSITION] ?? (first ? { x: own[first.key]!.x - lift(first.key).x, y: own[first.key]!.y - lift(first.key).y } : { x: 0, y: 0 });
+  const l = lift(key);
+  return { x: tenth(main.x + l.x), y: tenth(main.y + l.y), auto: true };
+}
+
+/** The layout with one position's own adjustment set (or, with null, back to following the main one). */
+export function withPositionShift(layout: ChequeLayout, key: PositionKey, shift: Shift | null): ChequeLayout {
+  const rest = { ...(layout.positionShifts ?? {}) };
+  delete rest[key];
+  return { ...layout, positionShifts: shift ? { ...rest, [key]: { x: tenth(shift.x), y: tenth(shift.y) } } : rest };
+}
+
+/** True once any position was set up: one set-up gives all four. */
+export const anyPositionSetUp = (layout: ChequeLayout) => Object.keys(layout.positionShifts ?? {}).length > 0;
+
+/** Which ready position a saved one is (by tray and the way the cheque goes in), or null for an extra one. */
+export function positionKeyOf(layout: ChequeLayout, p: Pick<PrintPosition, 'tray' | 'rotation'> | undefined | null): PositionKey | null {
+  if (!p) return null;
+  return READY_POSITIONS.find(r => (p.tray ?? 'rear') === r.tray && readyPlacement(layout, r.tray, r.leading).rotation === p.rotation)?.key ?? null;
+}
+
+/** Print settings with a position's adjustment added to the text offsets (which run right and down). */
+export function settingsFor<S extends Pick<PrintSettings, 'offsetX' | 'offsetY'>>(settings: S, layout: ChequeLayout, key: PositionKey | null): S {
+  if (!key) return settings;
+  const s = shiftFor(layout, key);
+  return { ...settings, offsetX: settings.offsetX + s.x, offsetY: settings.offsetY - s.y };
+}
+
+/** Every field moved by `shift` (mm, right and up): the layout as it prints in a position. */
+export function shiftLayout(layout: ChequeLayout, shift: Shift): ChequeLayout {
+  if (!shift.x && !shift.y) return layout;
+  const moved = editableFields(layout).reduce((L, f) => updateField(L, f.key, { ...f.box, x: f.box.x + shift.x, y: f.box.y - shift.y }), layout);
+  return { ...moved, payee2: layout.payee2 && { ...layout.payee2, x: tenth(layout.payee2.x + shift.x), y: tenth(layout.payee2.y - shift.y) } };
+}
+
 /**
- * The fields were moved by `moved` (usually back onto the cheque's lines after being shifted to make up for a
- * printer). The position the cheque book prints with keeps printing exactly where it did; the positions not yet set up
- * (both trays) take that correction as a shift of the page (where a printer's offset really is); positions already set
- * up on their own keep printing where they did.
+ * The same move as going from page placement `from` to `to` (same turn), as a shift of the print on the cheque.
+ * Lets a dragged, scanned or graph-read correction become the position's adjustment.
  */
-export function moveFieldShiftIntoPositions(layout: ChequeLayout, positions: readonly PrintPosition[], activeIdx: number, moved: { x: number; y: number }): PrintPosition[] {
-  const keep = (p: Placement) => correctPlacement(layout, p, moved.x, moved.y);
-  const active = positions[activeIdx];
-  const out = active ? adjustPosition(positions, activeIdx, keep(active)) : [...positions];
-  return out.map((p, i) => {
-    if (i === activeIdx || p !== positions[i]) return p;
-    const k = keep(p);
-    return { ...p, rotation: k.rotation, x: k.x, y: k.y };
+export function placementToShift(layout: ChequeLayout, from: Placement, to: Placement): Shift {
+  // correctPlacement(from, dx, dy) gives from - A·(dx, dy), A the cheque-to-page turn; it moves the print by (-dx, -dy).
+  const o = chequePointOnPage(layout, from.rotation, 0, 0);
+  const ex = chequePointOnPage(layout, from.rotation, 1, 0);
+  const ey = chequePointOnPage(layout, from.rotation, 0, 1);
+  const [a, b, c, d] = [ex.x - o.x, ey.x - o.x, ex.y - o.y, ey.y - o.y];
+  const det = a * d - b * c;
+  const [px, py] = [from.x - to.x, from.y - to.y];
+  const dx = (d * px - b * py) / det;
+  const dy = (a * py - c * px) / det;
+  return { x: tenth(-dx), y: tenth(dy) };
+}
+
+/**
+ * Older cheque books kept each position's correction in its page placement. Positions the user set up turn their
+ * correction into that position's own adjustment and go back to the plain placement; the ones the app moved by itself
+ * just go back (they follow the main one now). Runs once per layout.
+ */
+export function migratePositions(layout: ChequeLayout, positions: readonly PrintPosition[]): { layout: ChequeLayout; positions: PrintPosition[]; changed: boolean } {
+  if (layout.positionsVersion === 2) return { layout, positions: withReadyPositions(layout, positions), changed: false };
+  let L: ChequeLayout = { ...layout, positionsVersion: 2 };
+  const list = withReadyPositions(layout, positions).map((p, i) => {
+    const r = READY_POSITIONS[i];
+    if (!r) return p;
+    const plain = readyPlacement(layout, r.tray, r.leading);
+    if (p.rotation !== plain.rotation || (p.x === plain.x && p.y === plain.y)) return p;
+    if (p.calibrated && !layout.positionShifts?.[r.key]) L = withPositionShift(L, r.key, placementToShift(layout, plain, p));
+    return { ...p, x: plain.x, y: plain.y };
   });
+  return { layout: L, positions: list, changed: true };
 }

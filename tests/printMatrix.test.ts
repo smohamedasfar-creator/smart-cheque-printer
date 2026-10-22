@@ -24,8 +24,7 @@ import {
 import { blankLayout } from '../src/shared/layoutDefaults';
 import { calibrationPattern, calibrationResult, DOT_MM, locateCheque } from '../src/shared/detect/calibrate';
 import { correctionFromCorner } from '../src/shared/graph';
-import { adjustPosition, fieldShift, moveFieldShiftIntoPositions, READY_POSITIONS, withReadyPositions } from '../src/shared/positions';
-import { editableFields, updateField } from '../src/shared/layoutFields';
+import { placementToShift } from '../src/shared/positions';
 import { renderCheque } from '../src/shared/chequeRender';
 import { DEFAULT_SETTINGS, type ChequeLayout, type FeedRotation, type TextItem } from '../src/shared/types';
 
@@ -310,59 +309,23 @@ describe('virtual printer: fixing a test print by dragging', () => {
     expect(left.slice(0, 6)).toEqual([]);
   });
 
-  test('fixing one position with the arrows fixes every position not set up, in both trays', () => {
+  test('a dragged, scanned or graph-read correction becomes the position adjustment and prints the same', () => {
     const left: string[] = [];
-    for (const [w, h] of SIZES) {
+    for (const { tray, turn, w, h, s } of cases) {
+      if (s !== 'centre') continue;
       const layout = layoutOf(w, h);
+      const actual = spot(layout, tray, turn, s);
+      const p0 = trayToPage(layout, tray, actual);
       for (const error of ERRORS) {
-        for (const vertical of [0, 1, 2, 3]) {
-          const positions = withReadyPositions(layout, []);
-          const tray = READY_POSITIONS[vertical].tray;
-          const view = (i: number) => defaultTrayView(layout, READY_POSITIONS[i].tray, TRAY_KINDS[READY_POSITIONS[i].tray].turnFor(READY_POSITIONS[i].leading));
-          // Test print of the first position: the user moves the print by what they see, to the nearest mm.
-          const p1 = positions[vertical];
-          const field = probes(layout)[4];
-          const landed = landsOnCheque(layout, tray, view(vertical), p1, error, field);
-          const fixed = correctPlacement(layout, p1, Math.round(landed.x - field.x), Math.round(landed.y - field.y));
-          const after = adjustPosition(positions, vertical, fixed);
-          // A printer that is off by the same amount on its page in both trays: one adjustment fixes all four.
-          for (const i of [0, 1, 2, 3]) {
-            for (const c of probes(layout)) {
-              const now = landsOnCheque(layout, READY_POSITIONS[i].tray, view(i), after[i], error, c);
-              if (!near(now, c, 0.75)) { left.push(`${READY_POSITIONS[i].name} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
-            }
-          }
-        }
-      }
-    }
-    expect(left.slice(0, 6)).toEqual([]);
-  });
-
-  test('fields shifted to suit one position: putting them back on the lines fixes every position of both trays', () => {
-    const left: string[] = [];
-    for (const [w, h] of SIZES) {
-      const lines = layoutOf(w, h);
-      for (const error of ERRORS) {
-        for (const tuned of [0, 1, 2, 3]) {
-          const positions = withReadyPositions(lines, []);
-          const tray = READY_POSITIONS[tuned].tray;
-          const view = (i: number) => defaultTrayView(lines, READY_POSITIONS[i].tray, TRAY_KINDS[READY_POSITIONS[i].tray].turnFor(READY_POSITIONS[i].leading));
-          // The user printed one direction and moved every field by what they saw (to 0.5 mm), as in the editor.
-          const field = probes(lines)[4];
-          const landed = landsOnCheque(lines, tray, view(tuned), positions[tuned], error, field);
-          const off = { x: Math.round((landed.x - field.x) * 2) / 2, y: Math.round((landed.y - field.y) * 2) / 2 };
-          const shifted = editableFields(lines).reduce((L, f) => updateField(L, f.key, { ...f.box, x: f.box.x - off.x, y: f.box.y - off.y }), lines);
-          // "Put every field on the cheque lines": the shift goes into the print positions.
-          const moved = fieldShift(shifted, lines);
-          expect(moved).toEqual({ x: off.x || 0, y: off.y || 0 });
-          const after = moveFieldShiftIntoPositions(lines, positions, tuned, moved);
-          // The tuned position prints where it did; all the others (both trays, never set up) land in place too.
-          for (const i of [0, 1, 2, 3]) {
-            for (const c of probes(lines)) {
-              const now = landsOnCheque(lines, READY_POSITIONS[i].tray, view(i), after[i], error, c);
-              if (!near(now, c, 0.36)) { left.push(`${READY_POSITIONS[i].name} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
-            }
-          }
+        // The exact page correction for this printer, as the scan or graph would find it.
+        const field = probes(layout)[4];
+        const landed = landsOnCheque(layout, tray, actual, p0, error, field);
+        const fixed = correctPlacement(layout, p0, landed.x - field.x, landed.y - field.y);
+        // Kept as an adjustment of the text instead: same page placement, every point moved right and up by it.
+        const shift = placementToShift(layout, p0, fixed);
+        for (const c of probes(layout)) {
+          const now = landsOnCheque(layout, tray, actual, p0, error, { x: c.x + shift.x, y: c.y - shift.y });
+          if (!near(now, c, 0.2)) { left.push(`${tray} ${turn} ${w}x${h} error ${error.x},${error.y}: ${(now.x - c.x).toFixed(2)},${(now.y - c.y).toFixed(2)} off`); break; }
         }
       }
     }

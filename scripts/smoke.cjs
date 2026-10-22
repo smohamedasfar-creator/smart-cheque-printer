@@ -99,13 +99,25 @@ async function addChequeBook(win, file, name, index) {
   // select the payee field to show the inspector
   await js(win, "document.querySelector('.field-handle[title=\"Payee\"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
   await shot(win, `${index}-layout-${name.replace(/W+/g, '-').toLowerCase()}`);
+  // Four position tabs: the vertical one shows every field 3.5 mm higher than the main (back tray, horizontal) one.
+  const ys = () => js(win, "[...document.querySelectorAll('.graph-table tbody tr')].map(r => Number(r.querySelectorAll('input')[1].value))");
+  check('layout: four position tabs', await js(win, "document.querySelectorAll('.position-tabs button').length"), 4);
+  const mainYs = await ys();
+  await js(win, "document.querySelectorAll('.position-tabs button')[1].click()");
+  await wait(200);
+  const vertYs = await ys();
+  check('layout: vertical tab prints every field 3.5 mm higher', vertYs.every((v, i) => Math.abs(v - mainYs[i] - 3.5) < 0.11), true);
+  check('layout: fields are edited on the main tab only', await js(win, "document.querySelector('.graph-table input').readOnly"), true);
+  await shot(win, `${index}-layout-vertical-tab`);
+  await js(win, "document.querySelectorAll('.position-tabs button')[0].click()");
+  await wait(150);
   await click(win, 'Next: cheque book details →');
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   // The simple view: three steps up front, the technical settings closed away.
   check('details: test print is the first step', await js(win, "document.querySelector('.setup-steps button')?.textContent"), 'Test print');
-  check('details: four ready positions offered', await js(win, "[...document.querySelectorAll('.ready-positions .feed-option')].map(b => b.querySelector('strong').textContent + ' ' + b.querySelector('span').textContent).join(' | ')"), 'Back tray Vertical · date end first | Back tray Horizontal · top edge first | Front tray Vertical · date end first | Front tray Horizontal · top edge first');
-  check('details: back tray vertical chosen for a new cheque book', await js(win, "document.querySelector('.ready-positions .feed-option.active')?.textContent.startsWith('Back trayVertical')"), true);
+  check('details: four ready positions offered', await js(win, "[...document.querySelectorAll('.ready-positions .feed-option')].map(b => b.querySelector('strong').textContent + ' ' + b.querySelector('span').textContent).join(' | ')"), 'Back tray · main Horizontal · top edge first | Back tray Vertical · date end first | Front tray Horizontal · top edge first | Front tray Vertical · date end first');
+  check('details: main position (back tray, horizontal) chosen for a new cheque book', await js(win, "document.querySelector('.ready-positions .feed-option.active')?.textContent.startsWith('Back tray · mainHorizontal')"), true);
   check('details: four arrows move the print', await js(win, "document.querySelectorAll('.setup-steps .nudge button').length"), 4);
   check('details: print graph kept under Advanced', await js(win, "[...document.querySelectorAll('details.advanced button')].some(b => b.textContent === 'Print graph')"), true);
   check('details: advanced settings closed', await js(win, "document.querySelector('details.advanced').open"), false);
@@ -144,21 +156,27 @@ async function addChequeBook(win, file, name, index) {
   await js(win, "document.querySelector('[aria-label=\"Move right\"]').click(); document.querySelector('[aria-label=\"Move right\"]').click()");
   await click(win, 'Fix position');
   await wait(150);
-  check('fix position confirmed', await js(win, "document.querySelector('.success')?.textContent.includes('1 mm right')"), true);
+  check('fix position confirmed', await js(win, "[...document.querySelectorAll('.success')].some(p => p.textContent.includes('1 mm right'))"), true);
   await shot(win, `${index}d-fixed`);
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
   const saved = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
   // Back tray, date end first, against the right guide = the page's left edge. Date end first, the cheque's
   // left-to-right runs up the page, so text that landed 1 mm right means the cheque really sits 1 mm lower.
-  check(`${name}: saved position`, JSON.stringify(saved && { tray: saved.positions[0]?.tray, rotation: saved.feedRotation, x: saved.pageX, y: saved.pageY }), JSON.stringify({ tray: 'rear', rotation: 270, x: 0, y: 1 }));
+  // The placement stays where the cheque sits (against the right guide); the 1 mm becomes the position's adjustment.
+  const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'positions.js'));
+  const dragged = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === saved.templateId).layout;
+  check(`${name}: saved position`, JSON.stringify(saved && { rotation: saved.feedRotation, x: saved.pageX, y: saved.pageY }), JSON.stringify({ rotation: 270, x: 0, y: 0 }));
+  const d = P.placementToShift(dragged, { rotation: 270, x: 0, y: 0 }, { rotation: 270, x: 0, y: 1 });
+  const v = P.shiftFor(dragged, 'rear-v');
+  const main = P.shiftFor(dragged, 'rear-h');
+  check(`${name}: drag kept as the vertical position's own setting`, JSON.stringify(v), JSON.stringify({ x: Math.round((main.x + d.x) * 10) / 10, y: Math.round((main.y + P.VERTICAL_LIFT_MM + d.y) * 10) / 10, auto: false }));
 }
 
-/** The simple path: the arrows move the whole print on the cheque, saved as the print position. */
+/** The simple path: the arrows move the whole print on the cheque, kept as the position's own adjustment. */
 async function moveByArrows(win, name, index) {
-  const { correctionFromCorner } = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'graph.js'));
+  const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'positions.js'));
   const before = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
-  const template = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === before.templateId);
   await openDetails(win, name);
   await click(win, '↑ Up');
   await wait(100);
@@ -173,24 +191,18 @@ async function moveByArrows(win, name, index) {
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
   const after = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
-  // Moving the print 1 mm left and 2 mm up is what a corner reading of X -1, Y 2 does.
-  const want = correctionFromCorner(template.layout, { rotation: before.feedRotation, x: before.pageX, y: before.pageY }, { x: -1, y: 2 });
-  check(`${name}: saved position moved by the arrows`, JSON.stringify({ r: after.feedRotation, x: after.pageX, y: after.pageY }), JSON.stringify({ r: want.rotation, x: want.x, y: want.y }));
-  check(`${name}: position marked set up`, after.positions.some(p => p.calibrated === true), true);
-  // Every position not set up yet (both trays) follows the move on the page.
-  const idx = before.positions.findIndex(p => p.rotation === before.feedRotation && p.x === before.pageX && p.y === before.pageY);
-  const dx = after.pageX - before.pageX, dy = after.pageY - before.pageY;
-  const r1 = n => Math.round(n * 10) / 10;
-  const expected = before.positions.map((p, j) => j === idx ? { x: after.pageX, y: after.pageY } : !p.calibrated ? { x: r1(p.x + dx), y: r1(p.y + dy) } : { x: p.x, y: p.y });
+  const layout = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === after.templateId).layout;
+  check(`${name}: page placement stays plain`, JSON.stringify([after.feedRotation, after.pageX, after.pageY]), JSON.stringify([before.feedRotation, before.pageX, before.pageY]));
+  // A new cheque book starts on the main position: 1 mm left and 2 mm up is its own setting, the others follow.
+  check(`${name}: main position set by the arrows`, JSON.stringify(P.shiftFor(layout, 'rear-h')), JSON.stringify({ x: -1, y: 2, auto: false }));
+  check(`${name}: the other three follow it (vertical ${P.VERTICAL_LIFT_MM} mm higher)`, JSON.stringify(['rear-v', 'front-h', 'front-v'].map(k => P.shiftFor(layout, k))), JSON.stringify([{ x: -1, y: 2 + P.VERTICAL_LIFT_MM, auto: true }, { x: -1, y: 2, auto: true }, { x: -1, y: 2 + P.VERTICAL_LIFT_MM, auto: true }]));
   check(`${name}: four ready positions saved`, after.positions.length >= 4, true);
-  check(`${name}: positions not set up moved too (both trays)`, JSON.stringify(after.positions.map(p => ({ x: p.x, y: p.y }))), JSON.stringify(expected));
 }
 
-/** The graph path: type the corner reading of a printed graph, Apply, Save, and check the saved print position. */
+/** The graph path: type the corner reading of a printed graph, Apply, Save: it becomes the position's adjustment. */
 async function calibrateByGraph(win, name, index) {
-  const { correctionFromCorner } = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'graph.js'));
+  const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'positions.js'));
   const before = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
-  const template = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === before.templateId);
   await openDetails(win, name);
   await setField(win, '.corner-reading input', '-1.5');
   await js(win, "(() => { const el = document.querySelectorAll('.corner-reading input')[1]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '2'); el.dispatchEvent(new Event('input', { bubbles: true })); })()");
@@ -203,8 +215,9 @@ async function calibrateByGraph(win, name, index) {
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
   const after = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
-  const want = correctionFromCorner(template.layout, { rotation: before.feedRotation, x: before.pageX, y: before.pageY }, { x: -1.5, y: 2 });
-  check(`${name}: saved position follows the graph reading`, JSON.stringify({ r: after.feedRotation, x: after.pageX, y: after.pageY }), JSON.stringify({ r: want.rotation, x: want.x, y: want.y }));
+  const layout = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === after.templateId).layout;
+  check(`${name}: graph reading is the position's setting`, JSON.stringify(P.shiftFor(layout, 'rear-h')), JSON.stringify({ x: -1.5, y: 2, auto: false }));
+  check(`${name}: page placement stays plain after the graph`, JSON.stringify([after.feedRotation, after.pageX, after.pageY]), JSON.stringify([before.feedRotation, before.pageX, before.pageY]));
 }
 
 async function openDetails(win, name) {
@@ -222,11 +235,15 @@ async function calibrateByScan(win, name, index) {
   const account = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
   const template = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === account.templateId);
   const settings = await js(win, 'window.chequeApi.getSettings()');
-  const expected = { rotation: account.feedRotation, x: account.pageX, y: account.pageY };
+  // The scan method on the back tray, vertical: printed horizontally, its dot rows cross the cheque's printed design.
+  const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'positions.js'));
+  const expected = P.readyPlacement(template.layout, 'rear', 270);
   const actual = { rotation: expected.rotation, x: Math.round((expected.x - 17.5) * 10) / 10, y: Math.round((expected.y + 1.2) * 10) / 10 };
   const png = await simulateTestScan({ layout: template.layout, image: template.image, items: [], settings, expected, actual });
   fs.writeFileSync(path.join(outDir, `${index}f-test-scan.png`), png);
   await openDetails(win, name);
+  await js(win, "document.querySelectorAll('.ready-positions .feed-option')[1].click()");
+  await wait(150);
   await js(win, `(() => {
     const bytes = Uint8Array.from(atob('${png.toString('base64')}'), c => c.charCodeAt(0));
     const dt = new DataTransfer();
@@ -243,9 +260,11 @@ async function calibrateByScan(win, name, index) {
   await click(win, 'Save cheque book');
   await waitFor(win, "document.querySelector('.template-grid')");
   const saved = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
-  const off = Math.hypot(saved.pageX - actual.x, saved.pageY - actual.y);
-  check(`${name}: print position moved to where the cheque really sat (within 0.5 mm)`, off <= 0.5 && saved.feedRotation === actual.rotation, true);
-  check(`${name}: position marked calibrated`, saved.positions.some(p => p.calibrated === true), true);
+  const layout = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === saved.templateId).layout;
+  const want = P.placementToShift(layout, expected, actual);
+  const got = P.shiftFor(layout, 'rear-v');
+  check(`${name}: the scan sets the position's adjustment to where the cheque really sat (within 0.5 mm)`, !got.auto && Math.hypot(got.x - want.x, got.y - want.y) <= 0.5, true);
+  check(`${name}: page placement stays plain after the scan`, JSON.stringify([saved.feedRotation, saved.pageX, saved.pageY]), JSON.stringify([expected.rotation, expected.x, expected.y]));
 }
 
 let started = false;

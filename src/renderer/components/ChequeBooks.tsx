@@ -7,7 +7,7 @@ import type { Account, ChequeTemplate, FeedRotation, NewAccount, PrintPosition, 
 import { createMeasure } from '../measure';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { correctionFromCorner } from '../../shared/graph';
-import { adjustPosition, moveFieldShiftIntoPositions, READY_POSITIONS, withReadyPositions } from '../../shared/positions';
+import { adjustPosition, anyPositionSetUp, migratePositions, MAIN_POSITION, placementToShift, positionKeyOf, READY_POSITIONS, settingsFor, shiftFor, VERTICAL_LIFT_MM, withPositionShift, withReadyPositions, type Shift } from '../../shared/positions';
 import { ChequeCanvas } from './ChequeCanvas';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
@@ -34,23 +34,6 @@ const FEED_OPTIONS: Array<{ value: FeedRotation; title: string; icon: string }> 
   { value: 270, title: 'Date end first', icon: '▯↺' },
 ];
 const SAMPLE = { date: '2026-12-31', payee: 'Sample Payee Trading LLC', amountFils: 1_234_550, crossing: 'ac-payee-bearer' as const };
-
-/**
- * The fields of `template` went back onto the cheque lines by `moved`: every cheque book using it keeps printing where it
- * did, and the positions not yet set up take the correction as a page shift. Returns how many were changed.
- */
-async function takeOverFieldShift(template: ChequeTemplate, moved: { x: number; y: number }): Promise<number> {
-  const books = (await window.chequeApi.listAccounts()).filter(a => a.templateId === template.id && a.feedRotation !== null && a.pageX !== null && a.pageY !== null);
-  for (const a of books) {
-    const positions = withReadyPositions(template.layout, a.positions);
-    const idx = activePositionIndex({ ...a, positions });
-    const next = moveFieldShiftIntoPositions(template.layout, positions, idx, moved);
-    // A placement not saved as a position still keeps printing where it did.
-    const active = idx >= 0 ? next[idx] : correctPlacement(template.layout, { rotation: a.feedRotation!, x: a.pageX!, y: a.pageY! }, moved.x, moved.y);
-    await window.chequeApi.saveAccount({ ...a, positions: next, feedRotation: active.rotation, pageX: active.x, pageY: active.y });
-  }
-  return books.length;
-}
 
 /** One place for everything about a cheque book: its bank details and the layout of its cheque leaf. */
 export function ChequeBooks({ accounts, templates, settings, onChanged }: Props) {
@@ -102,7 +85,7 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
           settings={settings}
           saveLabel={mode.isNew ? 'Next: cheque book details →' : 'Save cheque design'}
           onCancel={() => setMode({ kind: 'list' })}
-          onSaved={async (template, fieldsMoved) => {
+          onSaved={async template => {
             const account = { ...mode.account, templateId: template.id, name: mode.account.name || template.name };
             if (mode.isNew) {
               // Reload so the details step can show and test-print the design just saved.
@@ -111,15 +94,9 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
               return;
             }
             if ('id' in mode.account && mode.account.id) await window.chequeApi.saveAccount(account);
-            const moved = fieldsMoved && (Math.abs(fieldsMoved.x) >= 0.1 || Math.abs(fieldsMoved.y) >= 0.1) ? await takeOverFieldShift(template, fieldsMoved) : 0;
             await onChanged();
             setMode({ kind: 'list' });
-            setMessage({
-              kind: 'ok',
-              text: moved
-                ? `Cheque design saved. The fields are back on the cheque lines and the print moved with them, so cheques print where they did. The other positions not set up yet are corrected too: test print each tray once to check.`
-                : 'Cheque design saved.',
-            });
+            setMessage({ kind: 'ok', text: 'Cheque design saved.' });
           }}
         />
       </section>
@@ -240,16 +217,28 @@ export function describePosition(p: PrintPosition): string {
   return `${TRAYS.find(t => t.value === (p.tray ?? 'rear'))?.title} · ${LEADING_EDGE[p.rotation]}`;
 }
 
+const VERTICAL_LIFT_TEXT = `${VERTICAL_LIFT_MM} mm`;
+
+/** A position's adjustment in words, e.g. "own: 1 mm right, 3.5 mm up". */
+function describeShift(s: Shift & { auto: boolean }): string {
+  const parts = [s.x ? `${Math.abs(s.x)} mm ${s.x > 0 ? 'right' : 'left'}` : '', s.y ? `${Math.abs(s.y)} mm ${s.y > 0 ? 'up' : 'down'}` : ''].filter(Boolean);
+  return `${s.auto ? 'Automatic' : '✓ Own setting'}: ${parts.length ? parts.join(', ') : 'as laid out'}`;
+}
+
 /** Cheques go in date end first by default: lengthways they are long enough in the feed direction not to jam. */
 const defaultTurn = (t: TrayKind) => TRAY_KINDS[t].turnFor(270);
 
 function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsProps) {
-  // The four ready positions are always there; a new cheque book starts on the first (back tray, vertical).
-  const positions0 = template ? withReadyPositions(template.layout, account.positions ?? []) : account.positions ?? [];
+  // The four ready positions are always there; a new cheque book starts on the main one (back tray, horizontal).
+  // Older cheque books kept corrections in the page placement: they become the positions' own adjustments (once).
+  const migrated = template ? migratePositions(template.layout, account.positions ?? []) : null;
+  const positions0 = migrated ? migrated.positions : account.positions ?? [];
   const unplaced = account.pageX === null || account.pageY === null || account.feedRotation === null;
-  const saved0 = activePositionIndex({ ...account, positions: positions0 });
+  const saved0 = activePositionIndex({ ...account, positions: template ? withReadyPositions(template.layout, account.positions ?? []) : positions0 });
   const idx0 = saved0 >= 0 ? saved0 : unplaced && positions0.length ? 0 : -1;
-  const start0 = unplaced && idx0 >= 0 ? { feedRotation: positions0[idx0].rotation, pageX: positions0[idx0].x, pageY: positions0[idx0].y } : {};
+  const start0 = idx0 >= 0 ? { feedRotation: positions0[idx0].rotation, pageX: positions0[idx0].x, pageY: positions0[idx0].y } : {};
+  /** The cheque layout with each position's adjustment, saved with the cheque book. */
+  const [layoutDraft, setLayoutDraft] = useState(migrated?.layout ?? null);
   const [draft, setDraft] = useState({ ...account, ...start0, positions: positions0 });
   const [activeIdx, setActiveIdx] = useState<number | null>(idx0 >= 0 ? idx0 : null);
   const [posName, setPosName] = useState(idx0 >= 0 ? positions0[idx0].name : positions0.length ? '' : 'Back tray');
@@ -269,9 +258,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   const [tested, setTested] = useState(false);
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
-  const onCheque = { ...settings, offsetX: draft.offsetX, offsetY: draft.offsetY };
-  const sample = template ? renderCheque(template.layout, SAMPLE, onCheque, measure) : null;
-  const layout = template?.layout;
+  const layout = layoutDraft ?? template?.layout;
 
   // The placement printed now: the cheque book's own one, or a centred cheque pushed fully into the chosen tray.
   const placement: Placement | null = layout
@@ -280,6 +267,17 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
       : trayToPage(layout, tray, defaultTrayView(layout, tray, defaultTurn(tray)))
     : null;
   const view = layout && placement ? pageToTray(layout, tray, placement) : null;
+  /** Which ready position is being set up; its adjustment moves the whole print on the cheque. */
+  const key = layout && placement ? positionKeyOf(layout, { tray, rotation: placement.rotation }) : null;
+  const onCheque = { ...settings, offsetX: draft.offsetX, offsetY: draft.offsetY };
+  const sample = layout ? renderCheque(layout, SAMPLE, layout ? settingsFor(onCheque, layout, key) : onCheque, measure) : null;
+  const setUp = layout ? anyPositionSetUp(layout) : false;
+  /** Sets this position's own adjustment (the others follow the main one). */
+  const setShift = (next: Shift) => {
+    if (!layout || !key) return;
+    setLayoutDraft(withPositionShift(layout, key, next));
+    setCalibrated(true);
+  };
   const setPlacement = (p: Placement) => setDraft(d => ({ ...d, feedRotation: p.rotation, pageX: p.x, pageY: p.y }));
 
   const chooseTray = (t: TrayKind) => {
@@ -390,6 +388,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
   const save = async () => {
     try {
+      if (template && layoutDraft && layoutDraft !== template.layout) await window.chequeApi.saveTemplate({ id: template.id, name: template.name, layout: layoutDraft, image: template.image });
       await onSave(withCurrent('update'));
     } catch (e) {
       setMessage({ kind: 'error', text: String(e).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, '') });
@@ -416,7 +415,9 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
     }
     const base = testedFor ?? placement;
     if (!base) return;
-    adjustTo(correctionFromCorner(template.layout, base, { x, y }));
+    const fixed = correctionFromCorner(template.layout, base, { x, y });
+    if (key && layout) setShift(placementToShift(layout, base, fixed));
+    else adjustTo(fixed);
     setTestedFor(null);
     const moves = [x ? `${Math.abs(x)} mm ${x > 0 ? 'right' : 'left'}` : '', y ? `${Math.abs(y)} mm ${y > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(' and ');
     setMessage({ kind: 'ok', text: `✓ Set up. ${moves ? `The print moves ${moves} on the cheque.` : 'The print was already in place.'} Press Save cheque book, then Test print to check.` });
@@ -425,8 +426,13 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   /** Step 3: move the whole print on the cheque by 1 mm (right and up positive), whichever way it goes into the printer. */
   const nudge = (right: number, up: number) => {
     if (!layout || !placement) return;
-    // correctPlacement takes where the print landed minus where it belongs: to move it right, it landed left.
-    adjustTo(correctPlacement(layout, placement, -right, up));
+    if (key) {
+      const now = shiftFor(layout, key);
+      setShift({ x: now.x + right, y: now.y + up });
+    } else {
+      // An extra position keeps its correction in the page placement. To move the print right, it landed left.
+      adjustTo(correctPlacement(layout, placement, -right, up));
+    }
     const next = { x: Math.round((moved.x + right) * 10) / 10, y: Math.round((moved.y + up) * 10) / 10 };
     setMoved(next);
     const parts = [next.y ? `${Math.abs(next.y)} mm ${next.y > 0 ? 'up' : 'down'}` : '', next.x ? `${Math.abs(next.x)} mm ${next.x > 0 ? 'right' : 'left'}` : ''].filter(Boolean);
@@ -436,7 +442,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
   /** Advanced: the test page with the sample text and the calibration dots. */
   const printTestPage = async () => {
     if (!template || !sample || !placement) return;
-    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: false, calibrate: true, placement });
+    const result = await window.chequeApi.print({ items: sample.items, layout: layout ?? template.layout, settings, testPrint: false, calibrate: true, placement });
     if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
     setTestedFor(placement);
     setMessage({ kind: 'ok', text: 'Test page sent. Scan the printed cheque (300 DPI) and choose the scan in step 3.' });
@@ -454,7 +460,8 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
       const reference = template.image ? await imageRaster(template.image) : undefined;
       const result = await calibrateAsync(upload, template.layout, expected, reference);
       if (result.ok && result.placement) {
-        adjustTo(result.placement);
+        if (key && layout && result.placement.rotation === expected.rotation) setShift(placementToShift(layout, expected, result.placement));
+        else adjustTo(result.placement);
         setMessage({ kind: 'ok', text: `✓ Calibrated. ${result.message} Press Save cheque book.` });
       } else {
         setMessage({ kind: 'error', text: result.message });
@@ -468,7 +475,7 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
 
   const testPrint = async (marks: boolean) => {
     if (!template || !sample || !placement) return;
-    const result = await window.chequeApi.print({ items: sample.items, layout: template.layout, settings, testPrint: marks, marks, placement });
+    const result = await window.chequeApi.print({ items: sample.items, layout: layout ?? template.layout, settings, testPrint: marks, marks, placement });
     if (result.ok && !marks) setTested(true);
     const sent = marks
       ? 'Alignment test sent. Measure the gaps between the crosshairs with a ruler: if they match the printed numbers, the size is right and only the position needs fixing in step 3.'
@@ -490,16 +497,16 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
         <label>Last cheque number used<input value={draft.lastChequeNo} onChange={e => set('lastChequeNo', e.target.value)} placeholder="e.g. 000123 — the next cheque will be 000124" /></label>
 
         <h3>Set up printing</h3>
-        <p className={calibrated ? 'success' : 'hint'}>
-          {calibrated ? '✓ Set up: this cheque book prints in place on your printer.' : 'Not set up yet. Once per cheque book:'}
+        <p className={setUp || calibrated ? 'success' : 'hint'}>
+          {setUp || calibrated ? '✓ Set up: this cheque book prints in place on your printer.' : 'Not set up yet. Set up one position and the other three follow:'}
         </p>
-        <p className="hint">How will you load the cheque? All four are ready; set up the ones you use.</p>
+        <p className="hint">How will you load the cheque? Back tray, horizontal is the main position; the others follow it (vertical prints {VERTICAL_LIFT_TEXT} higher) until you adjust them.</p>
         <div className="feed-options ready-positions">
           {READY_POSITIONS.map((r, i) => (
             <button key={r.name} type="button" className={i === activeIdx ? 'feed-option active' : 'feed-option'} onClick={() => selectPosition(i)}>
-              <strong>{r.tray === 'rear' ? 'Back tray' : 'Front tray'}</strong>
+              <strong>{r.tray === 'rear' ? 'Back tray' : 'Front tray'}{r.key === MAIN_POSITION ? ' · main' : ''}</strong>
               <span>{r.leading === 270 ? 'Vertical · date end first' : 'Horizontal · top edge first'}</span>
-              {(i === activeIdx ? calibrated : draft.positions[i]?.calibrated) && <span className="hint">✓ set up</span>}
+              {layout && <span className="hint">{describeShift(shiftFor(layout, r.key))}</span>}
             </button>
           ))}
         </div>
@@ -517,7 +524,10 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
               <button type="button" onClick={() => nudge(1, 0)} disabled={!template} title="Move the print 1 mm right">→ Right</button>
               <span className="hint">1 mm each click</span>
             </div>
-            <span className="hint">The positions not set up yet (both trays) move with it. A position you set up keeps its own.</span>
+            <span className="hint">The positions you have not adjusted follow the main one. A position you adjust keeps its own setting.</span>
+            {layout && key && !shiftFor(layout, key).auto && key !== MAIN_POSITION && (
+              <button type="button" className="link" onClick={() => { setLayoutDraft(withPositionShift(layout, key, null)); setMessage({ kind: 'ok', text: 'This position follows the main one again. Press Save cheque book to keep it.' }); }}>Follow the main position again</button>
+            )}
           </li>
           <li>When the text sits on the lines, press Save cheque book.</li>
         </ol>
@@ -610,7 +620,12 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
             tray={tray}
             view={view}
             interactive={advanced}
-            onChange={v => { setCalibrated(false); setPlacement(trayToPage(template.layout, tray, v)); }}
+            onChange={v => {
+              setCalibrated(false);
+              setPlacement(trayToPage(template.layout, tray, v));
+              // Where the cheque sits changed: a correction measured for the old spot no longer applies.
+              if (layout && key) setLayoutDraft(withPositionShift(layout, key, null));
+            }}
           />
           {advanced && sample && placement && (
             <div className="correction-panel">
@@ -622,7 +637,11 @@ function DetailsForm({ account, template, settings, onCancel, onSave }: DetailsP
                 fontFamily={settings.fontFamily}
                 placement={placement}
                 onApply={(next, what) => {
-                  setPlacement(next);
+                  if (key && next.rotation === placement.rotation) {
+                    const now = shiftFor(layout!, key);
+                    const d = placementToShift(layout!, placement, next);
+                    setShift({ x: now.x + d.x, y: now.y + d.y });
+                  } else setPlacement(next);
                   setMessage({ kind: 'ok', text: `${what} Press Save cheque book to keep it.` });
                 }}
               />
