@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatAmount, parseAmountToFils } from '../../shared/amountInWords';
 import { crossingFor } from '../../shared/banks';
 import { renderCheque, splitIntoWords } from '../../shared/chequeRender';
-import { adjustPosition, anyPositionSetUp, migratePositions, placementToShift, positionKeyOf, READY_POSITIONS, settingsFor, shiftFor, withPositionShift, withReadyPositions } from '../../shared/positions';
+import { adjustPosition, anyPositionSetUp, migratePositions, layoutForPosition, placementToShift, positionKeyOf, READY_POSITIONS, shiftFor, withReadyPositions, withShift } from '../../shared/positions';
 import { LEADING_EDGE, nextChequeNo, pageGeometry, pageToTray, printProblems, type Placement } from '../../shared/print';
 import { CROSSING_LABELS, type Account, type ChequeTemplate, type CrossingOption, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
-import { activePositionIndex } from './ChequeBooks';
+import { activePositionIndex } from './ChequeBookSetup';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
 import { WordBreakPicker } from './WordBreakPicker';
@@ -64,7 +64,7 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
       // A ready position keeps the correction as its own adjustment of the whole print.
       const now = shiftFor(template.layout, key);
       const d = placementToShift(template.layout, from, next);
-      await window.chequeApi.saveTemplate({ id: template.id, name: template.name, image: template.image, layout: withPositionShift(template.layout, key, { x: now.x + d.x, y: now.y + d.y }) });
+      await window.chequeApi.saveTemplate({ id: template.id, name: template.name, image: template.image, layout: withShift(template.layout, key, { x: now.x + d.x, y: now.y + d.y }) });
     } else {
       const adjusted = activePos >= 0 ? adjustPosition(positions, activePos, next) : positions;
       await window.chequeApi.saveAccount({ ...account, positions: adjusted, feedRotation: next.rotation, pageX: next.x, pageY: next.y });
@@ -109,10 +109,11 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
     // The cheque book's fine-tuning and the print position's own adjustment move text on the cheque; the printer
     // calibration places the cheque on the page.
     const key = positionKeyOf(template.layout, positions[activePos]);
-    const onCheque = settingsFor({ ...settings, offsetX: account.offsetX, offsetY: account.offsetY }, template.layout, key);
+    const onCheque = { ...settings, offsetX: account.offsetX, offsetY: account.offsetY };
+    const printed = layoutForPosition(template.layout, key);
     const data = { date, payee: payee || ' ', amountFils: amountFils ?? 0, crossing, wordsBreakAt };
     try {
-      return { preview: renderCheque(template.layout, data, { ...settings, offsetX: 0, offsetY: 0 }, measure), print: renderCheque(template.layout, data, onCheque, measure) };
+      return { preview: renderCheque(printed, data, { ...settings, offsetX: 0, offsetY: 0 }, measure), print: renderCheque(printed, data, onCheque, measure) };
     } catch (e) {
       return { error: String(e) };
     }

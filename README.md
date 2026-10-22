@@ -18,10 +18,13 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
   the cheque), cross only, none. Each cheque layout keeps its own default, so A/C PAYEE prints once.
 - **Graph layout**: the cheque is graph paper with (0, 0) at its bottom-left corner; each writing space has an X, Y and length in mm
   that you can type or drag.
+- **One screen per cheque book**: the cheque layout, the cheque book details and setting up printing, saved together.
 - **Four ready print positions** for every cheque book and printer: back tray and front tray, horizontal (top edge first) and
-  vertical (date end first), each with its loading animation. Each has its own setting (a move of the whole print, X right and
-  Y up), kept in the cheque layout and shown as four tabs in the layout editor. Back tray, horizontal is the main position:
-  the others follow it, vertical 3.5 mm higher, until they are adjusted on their own.
+  vertical (date end first), each with its loading animation, shown as four tabs on the cheque layout.
+  - **Default setting**: fields and one X / Y (a move of the whole print) are set on the main position, back tray horizontal;
+    the others follow it, vertical 5.5 mm higher.
+  - **Manual setting**: every position has its own fields and X / Y; changing one never changes another.
+- **Print graph** on a photocopy of the cheque to read where each line starts and type it in.
 - **Upright and the right size on upload**: a cheque scanned any way round is turned so its logo is top-left and its date
   top-right. Scan with a dark sheet behind the cheque so its edges, and so its size, show.
 - **Set up printing in two clicks**: Test print on a photocopy, then move the whole print with Up / Down / Left / Right (1 mm each)
@@ -41,8 +44,8 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 
 ## Using the app
 
-1. **Cheque Books → Add cheque book**: drop a scan of a blank leaf (or a phone photo on the ruler sheet), check the layout, enter the
-   name and last cheque number.
+1. **Cheque Books → Add cheque book**: drop a scan of a blank leaf (or a phone photo on the ruler sheet), check the layout and enter
+   the cheque book details on the same screen.
 2. **Set up printing** (same screen): load a photocopy of the cheque as the picture shows, press **Test print**, and if the text is
    off the lines move the print with the arrow buttons and test again. Save.
 3. **Write Cheque**: choose the cheque book, enter payee, amount and date, and print.

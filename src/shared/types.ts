@@ -58,13 +58,22 @@ export interface ChequeLayout {
   /** The crossing printed by default for this cheque, e.g. only the "or bearer" strike when it already says A/C PAYEE. */
   defaultCrossing?: CrossingOption;
   /**
-   * Each ready print position's own adjustment of the whole print, in mm on the cheque (x right, y up). A position not
-   * listed follows the main one (back tray, horizontal); vertical positions start a little higher.
+   * Move of the whole print, in mm on the cheque (x right, y up). Default setting: only the main position (back tray,
+   * horizontal) is kept and the others keep a fixed difference. Manual setting: every position's own.
    */
   positionShifts?: Partial<Record<PositionKey, { x: number; y: number }>>;
-  /** Set once old print positions were turned into position adjustments. */
+  /** Default: one X / Y and fixed differences between positions. Manual: every position set up on its own. */
+  positionMode?: PositionMode;
+  /** Manual setting: each position's own fields (where they print before its X / Y). */
+  positionLayouts?: Partial<Record<PositionKey, PositionFields>>;
+  /** Version of the print position data, so older cheque books are brought up to date once. */
   positionsVersion?: number;
 }
+
+export type PositionMode = 'default' | 'manual';
+
+/** The fields of a cheque layout (without its size and options). */
+export type PositionFields = Pick<ChequeLayout, 'payee' | 'payee2' | 'amount' | 'words1' | 'words2' | 'date' | 'acPayee' | 'bearerStrike' | 'crossingLines'>;
 
 /** The four ready print positions: back or front tray, horizontal (top edge first) or vertical (date end first). */
 export type PositionKey = 'rear-h' | 'rear-v' | 'front-h' | 'front-v';

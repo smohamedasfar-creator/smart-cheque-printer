@@ -4,7 +4,7 @@
 // follow it until they are adjusted on their own.
 import { editableFields, updateField } from './layoutFields';
 import { chequePointOnPage, defaultTrayView, trayToPage, TRAY_KINDS, type Placement, type TrayKind } from './print';
-import type { ChequeLayout, FeedRotation, PositionKey, PrintPosition, PrintSettings } from './types';
+import type { ChequeLayout, FeedRotation, PositionFields, PositionKey, PositionMode, PrintPosition } from './types';
 
 export interface ReadyPosition {
   key: PositionKey;
@@ -80,11 +80,11 @@ export function fieldShift(from: ChequeLayout, to: ChequeLayout): { x: number; y
   return { x: r(median(pairs.map(([a, b]) => b.x - a.x))), y: r(median(pairs.map(([a, b]) => b.y + b.height - (a.y + a.height)))) };
 }
 
-/** The main position: the others follow its adjustment until they are adjusted on their own. */
+/** The main position: in the default setting the others keep a fixed difference from it. */
 export const MAIN_POSITION: PositionKey = 'rear-h';
 
-/** Printing vertically lands about this much lower on the cheque than horizontally, so vertical positions start this much higher. */
-export const VERTICAL_LIFT_MM = 3.5;
+/** Printing vertically lands about this much lower on the cheque than horizontally, so vertical positions print this much higher. */
+export const VERTICAL_LIFT_MM = 5.5;
 
 export interface Shift {
   /** mm to the right on the cheque */
@@ -95,28 +95,38 @@ export interface Shift {
 
 const tenth = (v: number) => Math.round(v * 10) / 10 || 0;
 const lift = (key: PositionKey): Shift => ({ x: 0, y: key.endsWith('-v') ? VERTICAL_LIFT_MM : 0 });
+const ZERO: Shift = { x: 0, y: 0 };
 
-/** A position's adjustment: its own, or the main one's (with the vertical lift), `auto` then true. */
+/** Default: one X / Y for the main position and fixed differences for the others. Manual: every position on its own. */
+export const modeOf = (layout: ChequeLayout): PositionMode => layout.positionMode ?? 'default';
+
+/**
+ * A position's move of the whole print (its X / Y). Default: the main one's plus the fixed difference (`auto` for the
+ * other three). Manual: its own.
+ */
 export function shiftFor(layout: ChequeLayout, key: PositionKey): Shift & { auto: boolean } {
   const own = layout.positionShifts ?? {};
-  const mine = own[key];
-  if (mine) return { x: tenth(mine.x), y: tenth(mine.y), auto: false };
-  // The main adjustment: set directly, or worked out from whichever position was set up first.
-  const first = READY_POSITIONS.find(r => own[r.key]);
-  const main = own[MAIN_POSITION] ?? (first ? { x: own[first.key]!.x - lift(first.key).x, y: own[first.key]!.y - lift(first.key).y } : { x: 0, y: 0 });
+  if (modeOf(layout) === 'manual') {
+    const s = own[key] ?? ZERO;
+    return { x: tenth(s.x), y: tenth(s.y), auto: false };
+  }
+  const main = own[MAIN_POSITION] ?? ZERO;
   const l = lift(key);
-  return { x: tenth(main.x + l.x), y: tenth(main.y + l.y), auto: true };
+  return { x: tenth(main.x + l.x), y: tenth(main.y + l.y), auto: key !== MAIN_POSITION };
 }
 
-/** The layout with one position's own adjustment set (or, with null, back to following the main one). */
-export function withPositionShift(layout: ChequeLayout, key: PositionKey, shift: Shift | null): ChequeLayout {
-  const rest = { ...(layout.positionShifts ?? {}) };
-  delete rest[key];
-  return { ...layout, positionShifts: shift ? { ...rest, [key]: { x: tenth(shift.x), y: tenth(shift.y) } } : rest };
+/**
+ * Sets a position's X / Y. Default: the main one moves so this position gets exactly that, and the others keep their
+ * difference. Manual: only this position changes.
+ */
+export function withShift(layout: ChequeLayout, key: PositionKey, shift: Shift): ChequeLayout {
+  if (modeOf(layout) === 'manual') return { ...layout, positionShifts: { ...layout.positionShifts, [key]: { x: tenth(shift.x), y: tenth(shift.y) } } };
+  const l = lift(key);
+  return { ...layout, positionShifts: { [MAIN_POSITION]: { x: tenth(shift.x - l.x), y: tenth(shift.y - l.y) } } };
 }
 
-/** True once any position was set up: one set-up gives all four. */
-export const anyPositionSetUp = (layout: ChequeLayout) => Object.keys(layout.positionShifts ?? {}).length > 0;
+/** True once printing was set up (a move was set, or the positions were set up one by one). */
+export const anyPositionSetUp = (layout: ChequeLayout) => modeOf(layout) === 'manual' || Object.keys(layout.positionShifts ?? {}).length > 0;
 
 /** Which ready position a saved one is (by tray and the way the cheque goes in), or null for an extra one. */
 export function positionKeyOf(layout: ChequeLayout, p: Pick<PrintPosition, 'tray' | 'rotation'> | undefined | null): PositionKey | null {
@@ -124,23 +134,69 @@ export function positionKeyOf(layout: ChequeLayout, p: Pick<PrintPosition, 'tray
   return READY_POSITIONS.find(r => (p.tray ?? 'rear') === r.tray && readyPlacement(layout, r.tray, r.leading).rotation === p.rotation)?.key ?? null;
 }
 
-/** Print settings with a position's adjustment added to the text offsets (which run right and down). */
-export function settingsFor<S extends Pick<PrintSettings, 'offsetX' | 'offsetY'>>(settings: S, layout: ChequeLayout, key: PositionKey | null): S {
-  if (!key) return settings;
-  const s = shiftFor(layout, key);
-  return { ...settings, offsetX: settings.offsetX + s.x, offsetY: settings.offsetY - s.y };
-}
-
-/** Every field moved by `shift` (mm, right and up): the layout as it prints in a position. */
+/** Every field moved by `shift` (mm, right and up). */
 export function shiftLayout(layout: ChequeLayout, shift: Shift): ChequeLayout {
   if (!shift.x && !shift.y) return layout;
   const moved = editableFields(layout).reduce((L, f) => updateField(L, f.key, { ...f.box, x: f.box.x + shift.x, y: f.box.y - shift.y }), layout);
   return { ...moved, payee2: layout.payee2 && { ...layout.payee2, x: tenth(layout.payee2.x + shift.x), y: tenth(layout.payee2.y - shift.y) } };
 }
 
+const FIELD_KEYS = ['payee', 'payee2', 'amount', 'words1', 'words2', 'date', 'acPayee', 'bearerStrike', 'crossingLines'] as const;
+const fieldsOf = (L: ChequeLayout): PositionFields => Object.fromEntries(FIELD_KEYS.map(k => [k, L[k]])) as unknown as PositionFields;
+
+/** The layout as it prints in a position: what is shown on that position's tab and what goes to the printer. */
+export function layoutForPosition(layout: ChequeLayout, key: PositionKey | null): ChequeLayout {
+  if (!key) return layout;
+  if (modeOf(layout) === 'manual') {
+    const own = layout.positionLayouts?.[key];
+    return shiftLayout(own ? { ...layout, ...own } : layout, shiftFor(layout, key));
+  }
+  return shiftLayout(layout, shiftFor(layout, key));
+}
+
+/**
+ * The fields edited on a position's tab (given as they print there). Manual: only that position changes. Default: the
+ * fields of every position change (they are edited on the main tab).
+ */
+export function withPositionLayout(layout: ChequeLayout, key: PositionKey, printed: ChequeLayout): ChequeLayout {
+  const s = shiftFor(layout, key);
+  const fields = fieldsOf(shiftLayout(printed, { x: -s.x, y: -s.y }));
+  if (modeOf(layout) === 'manual') return { ...layout, positionLayouts: { ...layout.positionLayouts, [key]: fields } };
+  return { ...layout, ...fields };
+}
+
+/** Applies the same change to the fields of every position (e.g. the date written on a line or in boxes). */
+export function mapAllPositions(layout: ChequeLayout, change: (L: ChequeLayout) => ChequeLayout): ChequeLayout {
+  const base = change(layout);
+  if (!layout.positionLayouts) return base;
+  const positionLayouts: ChequeLayout['positionLayouts'] = {};
+  for (const r of READY_POSITIONS) {
+    const own = layout.positionLayouts[r.key];
+    if (own) positionLayouts[r.key] = fieldsOf(change({ ...layout, ...own }));
+  }
+  return { ...base, positionLayouts };
+}
+
+/** Manual: each position starts with its fields where they print now and can then be changed on its own. */
+export function toManual(layout: ChequeLayout): ChequeLayout {
+  if (modeOf(layout) === 'manual') return layout;
+  const positionLayouts: ChequeLayout['positionLayouts'] = {};
+  for (const r of READY_POSITIONS) positionLayouts[r.key] = fieldsOf(layoutForPosition(layout, r.key));
+  return { ...layout, positionMode: 'manual', positionLayouts, positionShifts: {} };
+}
+
+/** Default: the main position's fields and X / Y are kept; the others go back to the fixed difference. */
+export function toDefault(layout: ChequeLayout): ChequeLayout {
+  if (modeOf(layout) === 'default') return layout;
+  const main = layout.positionLayouts?.[MAIN_POSITION];
+  const s = layout.positionShifts?.[MAIN_POSITION];
+  const { positionLayouts: _dropped, ...rest } = layout;
+  return { ...rest, ...(main ?? {}), positionMode: 'default', positionShifts: s ? { [MAIN_POSITION]: s } : {} };
+}
+
 /**
  * The same move as going from page placement `from` to `to` (same turn), as a shift of the print on the cheque.
- * Lets a dragged, scanned or graph-read correction become the position's adjustment.
+ * Lets a dragged, scanned or graph-read correction become the position's X / Y.
  */
 export function placementToShift(layout: ChequeLayout, from: Placement, to: Placement): Shift {
   // correctPlacement(from, dx, dy) gives from - A·(dx, dy), A the cheque-to-page turn; it moves the print by (-dx, -dy).
@@ -155,21 +211,46 @@ export function placementToShift(layout: ChequeLayout, from: Placement, to: Plac
   return { x: tenth(-dx), y: tenth(dy) };
 }
 
+/** 1.7.0 printed automatic vertical positions this much higher. */
+const LIFT_1_7_MM = 3.5;
+const CURRENT_VERSION = 3;
+
 /**
- * Older cheque books kept each position's correction in its page placement. Positions the user set up turn their
- * correction into that position's own adjustment and go back to the plain placement; the ones the app moved by itself
- * just go back (they follow the main one now). Runs once per layout.
+ * Brings an older cheque book up to date, once. Corrections kept in the page placement become the position's X / Y
+ * (1.7.0). Then, if positions other than the main one were set up on their own, the cheque book switches to the
+ * manual setting with each position printing where it did; otherwise it keeps the default setting.
  */
 export function migratePositions(layout: ChequeLayout, positions: readonly PrintPosition[]): { layout: ChequeLayout; positions: PrintPosition[]; changed: boolean } {
-  if (layout.positionsVersion === 2) return { layout, positions: withReadyPositions(layout, positions), changed: false };
-  let L: ChequeLayout = { ...layout, positionsVersion: 2 };
-  const list = withReadyPositions(layout, positions).map((p, i) => {
-    const r = READY_POSITIONS[i];
-    if (!r) return p;
-    const plain = readyPlacement(layout, r.tray, r.leading);
-    if (p.rotation !== plain.rotation || (p.x === plain.x && p.y === plain.y)) return p;
-    if (p.calibrated && !layout.positionShifts?.[r.key]) L = withPositionShift(L, r.key, placementToShift(layout, plain, p));
-    return { ...p, x: plain.x, y: plain.y };
-  });
+  if ((layout.positionsVersion ?? 0) >= CURRENT_VERSION) return { layout, positions: withReadyPositions(layout, positions), changed: false };
+  let own: Partial<Record<PositionKey, Shift>> = { ...(layout.positionShifts ?? {}) };
+  let list = withReadyPositions(layout, positions);
+  if ((layout.positionsVersion ?? 0) < 2) {
+    list = list.map((p, i) => {
+      const r = READY_POSITIONS[i];
+      if (!r) return p;
+      const plain = readyPlacement(layout, r.tray, r.leading);
+      if (p.rotation !== plain.rotation || (p.x === plain.x && p.y === plain.y)) return p;
+      if (p.calibrated && !own[r.key]) own = { ...own, [r.key]: placementToShift(layout, plain, p) };
+      return { ...p, x: plain.x, y: plain.y };
+    });
+  }
+  const others = READY_POSITIONS.filter(r => r.key !== MAIN_POSITION && own[r.key]);
+  let L: ChequeLayout = { ...layout, positionsVersion: CURRENT_VERSION };
+  if (!others.length) {
+    L = { ...L, positionMode: 'default', positionShifts: own[MAIN_POSITION] ? { [MAIN_POSITION]: own[MAIN_POSITION]! } : {} };
+  } else {
+    // Each position keeps printing where it did: its own move, or the main one's (worked out as 1.7.0 did) plus the new difference.
+    const first = READY_POSITIONS.find(r => own[r.key])!;
+    const oldLift = (k: PositionKey) => (k.endsWith('-v') ? LIFT_1_7_MM : 0);
+    const main = own[MAIN_POSITION] ?? { x: own[first.key]!.x, y: own[first.key]!.y - oldLift(first.key) };
+    const positionLayouts: ChequeLayout['positionLayouts'] = {};
+    for (const r of READY_POSITIONS) positionLayouts[r.key] = fieldsOf(shiftLayout(layout, own[r.key] ?? { x: main.x + lift(r.key).x, y: main.y + lift(r.key).y }));
+    L = { ...L, positionMode: 'manual', positionLayouts, positionShifts: {} };
+  }
   return { layout: L, positions: list, changed: true };
+}
+
+/** A position back to its starting X / Y (default: everything follows the plain layout again; manual: this position only). */
+export function resetShift(layout: ChequeLayout, key: PositionKey): ChequeLayout {
+  return modeOf(layout) === 'manual' ? withShift(layout, key, ZERO) : { ...layout, positionShifts: {} };
 }

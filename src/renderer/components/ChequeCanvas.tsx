@@ -51,6 +51,11 @@ export function ChequeCanvas({ layout, items, fontFamily, image, scale = 5, edit
   const move = (e: PointerEvent) => {
     const d = drag.current;
     if (!d || !onChange) return;
+    // No button held: the drag already ended (e.g. released outside the window).
+    if (e.buttons === 0) {
+      drag.current = null;
+      return;
+    }
     const dx = (e.clientX - d.startX) / scale;
     const dy = (e.clientY - d.startY) / scale;
     const next = d.mode === 'move' ? { ...d.box, x: d.box.x + dx, y: d.box.y + dy } : { ...d.box, width: d.box.width + dx, height: d.box.height + dy };

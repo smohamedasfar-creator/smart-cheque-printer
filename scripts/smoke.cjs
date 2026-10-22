@@ -99,29 +99,30 @@ async function addChequeBook(win, file, name, index) {
   // select the payee field to show the inspector
   await js(win, "document.querySelector('.field-handle[title=\"Payee\"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
   await shot(win, `${index}-layout-${name.replace(/W+/g, '-').toLowerCase()}`);
-  // Four position tabs: the vertical one shows every field 3.5 mm higher than the main (back tray, horizontal) one.
+  // Four position tabs: the vertical one shows every field 5.5 mm higher than the main (back tray, horizontal) one.
   const ys = () => js(win, "[...document.querySelectorAll('.graph-table tbody tr')].map(r => Number(r.querySelectorAll('input')[1].value))");
   check('layout: four position tabs', await js(win, "document.querySelectorAll('.position-tabs button').length"), 4);
   const mainYs = await ys();
   await js(win, "document.querySelectorAll('.position-tabs button')[1].click()");
   await wait(200);
   const vertYs = await ys();
-  check('layout: vertical tab prints every field 3.5 mm higher', vertYs.every((v, i) => Math.abs(v - mainYs[i] - 3.5) < 0.11), true);
-  check('layout: fields are edited on the main tab only', await js(win, "document.querySelector('.graph-table input').readOnly"), true);
+  check('layout: vertical tab prints every field 5.5 mm higher', vertYs.every((v, i) => Math.abs(v - mainYs[i] - 5.5) < 0.11), true);
+  check('layout: default setting edits fields on the main tab only', await js(win, "document.querySelector('.graph-table input').readOnly"), true);
+  check('layout: default and manual settings offered', await js(win, "[...document.querySelectorAll('.position-mode button')].map(b => b.textContent).join(',')"), 'Default,Manual');
   await shot(win, `${index}-layout-vertical-tab`);
   await js(win, "document.querySelectorAll('.position-tabs button')[0].click()");
   await wait(150);
-  await click(win, 'Next: cheque book details →');
-  await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
+  // Layout and cheque book details are on one screen.
+  check('layout and details on one screen', await js(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details') && Boolean(document.querySelector('.template-editor'))"), true);
   await setField(win, 'input[placeholder^="e.g. 000123"]', '000135');
   // The simple view: three steps up front, the technical settings closed away.
   check('details: test print is the first step', await js(win, "document.querySelector('.setup-steps button')?.textContent"), 'Test print');
   check('details: four ready positions offered', await js(win, "[...document.querySelectorAll('.ready-positions .feed-option')].map(b => b.querySelector('strong').textContent + ' ' + b.querySelector('span').textContent).join(' | ')"), 'Back tray · main Horizontal · top edge first | Back tray Vertical · date end first | Front tray Horizontal · top edge first | Front tray Vertical · date end first');
   check('details: main position (back tray, horizontal) chosen for a new cheque book', await js(win, "document.querySelector('.ready-positions .feed-option.active')?.textContent.startsWith('Back tray · mainHorizontal')"), true);
   check('details: four arrows move the print', await js(win, "document.querySelectorAll('.setup-steps .nudge button').length"), 4);
-  check('details: print graph kept under Advanced', await js(win, "[...document.querySelectorAll('details.advanced button')].some(b => b.textContent === 'Print graph')"), true);
+  check('details: print graph in the main steps', await js(win, "[...document.querySelectorAll('.setup-steps button')].some(b => b.textContent === 'Print graph')"), true);
   check('details: advanced settings closed', await js(win, "document.querySelector('details.advanced').open"), false);
-  check('details: not set up yet', await js(win, "document.querySelector('.form').textContent.includes('Not set up yet')"), true);
+  check('details: not set up yet', await js(win, "document.querySelector('.details-layout .form').textContent.includes('Not set up yet')"), true);
   await wait(6300);
   await shot(win, `${index}b-details`);
   await click(win, 'Save cheque book');
@@ -170,7 +171,9 @@ async function addChequeBook(win, file, name, index) {
   const d = P.placementToShift(dragged, { rotation: 270, x: 0, y: 0 }, { rotation: 270, x: 0, y: 1 });
   const v = P.shiftFor(dragged, 'rear-v');
   const main = P.shiftFor(dragged, 'rear-h');
-  check(`${name}: drag kept as the vertical position's own setting`, JSON.stringify(v), JSON.stringify({ x: Math.round((main.x + d.x) * 10) / 10, y: Math.round((main.y + P.VERTICAL_LIFT_MM + d.y) * 10) / 10, auto: false }));
+  // Default setting: the drag moves all four, the vertical keeps its 5.5 mm (the guide move started it afresh).
+  check(`${name}: drag kept as the X / Y, difference kept`, JSON.stringify([v, main]), JSON.stringify([{ x: d.x, y: Math.round((P.VERTICAL_LIFT_MM + d.y) * 10) / 10, auto: true }, { x: d.x, y: d.y, auto: false }]));
+  if (index === 2) await manualSetting(win, name, index);
 }
 
 /** The simple path: the arrows move the whole print on the cheque, kept as the position's own adjustment. */
@@ -220,6 +223,35 @@ async function calibrateByGraph(win, name, index) {
   check(`${name}: page placement stays plain after the graph`, JSON.stringify([after.feedRotation, after.pageX, after.pageY]), JSON.stringify([before.feedRotation, before.pageX, before.pageY]));
 }
 
+/** Manual setting: the vertical position gets its own X / Y and its own field, and the horizontal one does not change. */
+async function manualSetting(win, name, index) {
+  const P = require(path.join(__dirname, '..', 'dist', 'main', 'shared', 'positions.js'));
+  const account = (await js(win, 'window.chequeApi.listAccounts()')).find(a => a.name === name);
+  const before = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === account.templateId).layout;
+  await openDetails(win, name);
+  await click(win, 'Manual');
+  await wait(150);
+  await js(win, "document.querySelectorAll('.position-tabs button')[1].click()");
+  await wait(150);
+  check('manual: the vertical tab can be changed', await js(win, "document.querySelector('.graph-table input').readOnly"), false);
+  await setField(win, '.position-shift input', '1');
+  await js(win, "(() => { const el = document.querySelectorAll('.position-shift input')[1]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '9'); el.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  // The payee of the vertical position starts 5 mm further right.
+  const payeeX = await js(win, "Number(document.querySelectorAll('.graph-table tbody tr')[1].querySelector('input').value)");
+  await js(win, `(() => { const el = document.querySelectorAll('.graph-table tbody tr')[1].querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '${payeeX + 5}'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await wait(150);
+  await shot(win, `${index}i-manual-vertical`);
+  await click(win, 'Save cheque book');
+  await waitFor(win, "document.querySelector('.template-grid')");
+  const after = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === account.templateId).layout;
+  check('manual: saved as manual', after.positionMode, 'manual');
+  check('manual: vertical has its own X / Y', JSON.stringify(P.shiftFor(after, 'rear-v')), JSON.stringify({ x: 1, y: 9, auto: false }));
+  const h = (L) => JSON.stringify(['payee', 'amount', 'words1', 'words2', 'date'].map(k => L[k]));
+  check('manual: horizontal prints exactly as before', h(P.layoutForPosition(after, 'rear-h')), h(P.layoutForPosition(before, 'rear-h')));
+  const vx = P.layoutForPosition(after, 'rear-v').payee.x - P.layoutForPosition(before, 'rear-v').payee.x;
+  check('manual: vertical payee moved 5 mm plus its X', Math.round(vx * 10) / 10, 6);
+}
+
 async function openDetails(win, name) {
   await js(win, `[...document.querySelectorAll('.template-card')].find(c => c.textContent.includes(${JSON.stringify(name)})).querySelector('button').click()`);
   await waitFor(win, "[...document.querySelectorAll('h2')].some(h => h.textContent === 'Cheque book details')");
@@ -263,7 +295,7 @@ async function calibrateByScan(win, name, index) {
   const layout = (await js(win, 'window.chequeApi.listTemplates()')).find(t => t.id === saved.templateId).layout;
   const want = P.placementToShift(layout, expected, actual);
   const got = P.shiftFor(layout, 'rear-v');
-  check(`${name}: the scan sets the position's adjustment to where the cheque really sat (within 0.5 mm)`, !got.auto && Math.hypot(got.x - want.x, got.y - want.y) <= 0.5, true);
+  check(`${name}: the scan sets the position's X / Y to where the cheque really sat (within 0.5 mm)`, Math.hypot(got.x - want.x, got.y - want.y) <= 0.5, true);
   check(`${name}: page placement stays plain after the scan`, JSON.stringify([saved.feedRotation, saved.pageX, saved.pageY]), JSON.stringify([expected.rotation, expected.x, expected.y]));
 }
 

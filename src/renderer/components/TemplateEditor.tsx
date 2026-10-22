@@ -1,13 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { parseAmountToFils } from '../../shared/amountInWords';
 import { renderCheque } from '../../shared/chequeRender';
 import type { DetectionResult } from '../../shared/detect/detectCheque';
-import { fieldShift, MAIN_POSITION, READY_POSITIONS, shiftFor, shiftLayout, VERTICAL_LIFT_MM, withPositionShift, type Shift } from '../../shared/positions';
+import { fieldShift, layoutForPosition, MAIN_POSITION, mapAllPositions, modeOf, READY_POSITIONS, shiftFor, toDefault, toManual, VERTICAL_LIFT_MM, withPositionLayout, withShift, type Shift } from '../../shared/positions';
 import { applyBank, bankBySize, crossingFor, matchBank, type BankTemplate } from '../../shared/banks';
 import { blankLayout, scaleLayout } from '../../shared/layoutDefaults';
 import { editableFields, moveDate, toggleDateMode, updateField, type FieldKey } from '../../shared/layoutFields';
 import { graphStart, withGraphStart, type GraphPoint } from '../../shared/graph';
-import { CROSSING_LABELS, type ChequeLayout, type ChequeTemplate, type CrossingOption, type PositionKey, type PrintSettings } from '../../shared/types';
+import { CROSSING_LABELS, type ChequeLayout, type CrossingOption, type PositionKey, type PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
 import { chequeImageDataUrl, detectAsync, loadUpload, type LoadedUpload } from '../upload';
 import { ChequeCanvas } from './ChequeCanvas';
@@ -69,16 +69,26 @@ const FIELD_NAMES: Record<string, string> = {
 };
 
 interface EditorProps {
-  initial: Draft;
+  /** The cheque layout and picture, kept by the cheque book screen (saved together with its details). */
+  draft: Draft;
+  setDraft: Dispatch<SetStateAction<Draft>>;
   settings: PrintSettings;
-  onCancel: () => void;
-  onSaved: (template: ChequeTemplate) => Promise<void>;
-  /** Label of the save button, e.g. "Next: cheque book details". */
-  saveLabel?: string;
+  /** Why the cheque book cannot be saved yet (e.g. its real size is still unknown), or null. */
+  onBlock?: (reason: string | null) => void;
 }
 
-export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel = 'Save cheque design' }: EditorProps) {
-  const [draft, setDraft] = useState<Draft>(initial);
+/** A typed X, Y or length from the field table, applied to a layout; null when the number is not valid. */
+function graphEdit(L: ChequeLayout, key: FieldKey, next: Partial<GraphPoint & { length: number }>): ChequeLayout | null {
+  if (Object.values(next).some(v => !Number.isFinite(v))) return null;
+  if (key === 'date' && L.date.mode === 'digits') {
+    const now = graphRows(L)[0].start;
+    return moveDate(L, (next.x ?? now.x) - now.x, -((next.y ?? now.y) - now.y));
+  }
+  const box = editableFields(L).find(f => f.key === key)?.box;
+  return box ? updateField(L, key, withGraphStart(box, L.chequeHeight, next)) : null;
+}
+
+export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorProps) {
   const [upload, setUpload] = useState<LoadedUpload | null>(null);
   const [detection, setDetection] = useState<DetectionResult | null>(null);
   const [busy, setBusy] = useState('');
@@ -98,7 +108,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
 
   const rendered = useMemo(() => {
     try {
-      return renderCheque(shiftLayout(draft.layout, shiftFor(draft.layout, tab)), { payee: sample.payee, amountFils: parseAmountToFils(sample.amount) ?? 0, date: sample.date, crossing: sample.crossing }, settings, measure);
+      return renderCheque(layoutForPosition(draft.layout, tab), { payee: sample.payee, amountFils: parseAmountToFils(sample.amount) ?? 0, date: sample.date, crossing: sample.crossing }, settings, measure);
     } catch {
       return { items: [], warnings: ['Enter a valid sample date.'] };
     }
@@ -153,67 +163,48 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
     setDetection(r => (r ? { ...r, sizeKnown: true, warnings: r.warnings.filter(w => !w.includes('width')) } : r));
   };
 
-  const save = async () => {
-    if (!draft.name.trim()) {
-      setError('Give the cheque book a name, for example "FAB current account".');
-      return;
-    }
-    if (detection && !detection.sizeKnown) {
-      setError('Enter the real cheque width first, so the printout is the right size.');
-      return;
-    }
-    try {
-      const saved = await window.chequeApi.saveTemplate({ id: draft.id, name: draft.name, layout: draft.layout, image: draft.image });
-      await onSaved(saved);
-    } catch (e) {
-      setError(String(e));
-    }
-  };
+  // The cheque book screen cannot save while the real size of a photo is unknown.
+  useEffect(() => onBlock?.(detection && !detection.sizeKnown ? 'Enter the real cheque width first, so the printout is the right size.' : null), [detection?.sizeKnown]);
 
   const setLayout = (layout: ChequeLayout) => setDraft(d => ({ ...d, layout }));
-  /** A typed X, Y or length from the graph table. */
-  const setGraph = (key: FieldKey, next: Partial<GraphPoint & { length: number }>) => {
-    if (Object.values(next).some(v => !Number.isFinite(v))) return;
-    const L = draft.layout;
-    if (key === 'date' && L.date.mode === 'digits') {
-      const now = graphRows(L)[0].start;
-      setLayout(moveDate(L, (next.x ?? now.x) - now.x, -((next.y ?? now.y) - now.y)));
-      return;
-    }
-    const box = editableFields(L).find(f => f.key === key)?.box;
-    if (box) setLayout(updateField(L, key, withGraphStart(box, L.chequeHeight, next)));
-  };
   // An existing FAB or RAKBANK design can take the bank library's measured writing spaces in one click.
   // Known by its lines, or by its size when the fields were moved by hand (often to make up for where a printer prints).
-  const libraryMatch = !detection && !isNew && !libraryApplied ? matchBank(draft.layout) ?? bankBySize(draft.layout) : null;
-  // The layout as it prints in the chosen position. Fields are edited on the main position; the others follow it.
+  const manual = modeOf(draft.layout) === 'manual';
+  const libraryMatch = !detection && !isNew && !libraryApplied && !manual ? matchBank(draft.layout) ?? bankBySize(draft.layout) : null;
+  // The layout as it prints in the chosen position. Default setting: fields and X / Y are set on the main position and the
+  // others keep their difference. Manual setting: every position is changed on its own tab.
   const tabShift = shiftFor(draft.layout, tab);
-  const shown = shiftLayout(draft.layout, tabShift);
+  const shown = layoutForPosition(draft.layout, tab);
   const onMain = tab === MAIN_POSITION;
-  const unshift = (L: ChequeLayout) => shiftLayout(L, { x: -tabShift.x, y: -tabShift.y });
-  const setTabShift = (s: Shift) => Number.isFinite(s.x) && Number.isFinite(s.y) && setLayout(withPositionShift(draft.layout, tab, s));
+  const editable = onMain || manual;
+  /** A change made on this tab's layout (as it prints there). */
+  const setShown = (L: ChequeLayout | null) => L && setLayout(withPositionLayout(draft.layout, tab, L));
+  const setTabShift = (s: Shift) => Number.isFinite(s.x) && Number.isFinite(s.y) && setLayout(withShift(draft.layout, tab, s));
+  const setGraph = (key: FieldKey, next: Partial<GraphPoint & { length: number }>) => setShown(graphEdit(shown, key, next));
   /** Puts every field on the bank's cheque lines; the print keeps its place through the main position's adjustment. */
   const useLibrary = (bankTemplate: BankTemplate) => {
     const applied = { ...applyBank(bankTemplate, draft.layout), positionShifts: draft.layout.positionShifts, positionsVersion: draft.layout.positionsVersion };
     const moved = fieldShift(draft.layout, applied);
     const main = shiftFor(draft.layout, MAIN_POSITION);
-    setLayout(moved.x || moved.y ? withPositionShift(applied, MAIN_POSITION, { x: main.x - moved.x, y: main.y + moved.y }) : applied);
+    setLayout(moved.x || moved.y ? withShift(applied, MAIN_POSITION, { x: main.x - moved.x, y: main.y + moved.y }) : applied);
     setLibraryApplied(true);
   };
-  const field = selected ? editableFields(draft.layout).find(f => f.key === selected) : undefined;
+  const field = selected ? editableFields(shown).find(f => f.key === selected) : undefined;
   const setBox = (key: 'x' | 'y' | 'width' | 'height', value: number) =>
-    field && Number.isFinite(value) && setLayout(updateField(draft.layout, field.key, { ...field.box, [key]: value }));
+    field && Number.isFinite(value) && setShown(updateField(shown, field.key, { ...field.box, [key]: value }));
+  const setMode = (to: 'default' | 'manual') => {
+    if (to === 'default' && manual && !confirm('Back to the default setting? The main position (back tray, horizontal) is kept; the other three go back to the fixed difference and lose their own changes.')) return;
+    setLayout(to === 'manual' ? toManual(draft.layout) : toDefault(draft.layout));
+  };
 
   return (
     <section className="template-editor">
       <div className="editor-main">
         <div className="editor-toolbar">
-          <button onClick={onCancel}>← Back</button>
           <input className="name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Cheque book name, e.g. FAB current account" />
           <button onClick={() => fileInput.current?.click()} disabled={!!busy}>{hasLeaf ? 'Upload a different leaf' : 'Choose file'}</button>
           {upload && <button onClick={() => runDetection(upload, !detection?.transform.flip)} disabled={!!busy}>Turn upside down</button>}
           {upload && <button onClick={() => runDetection(upload, detection?.transform.flip)} disabled={!!busy}>Detect again</button>}
-          <button className="primary" onClick={save} disabled={!!busy || !hasLeaf}>{saveLabel}</button>
           <input ref={fileInput} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden onChange={e => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
         </div>
 
@@ -267,24 +258,33 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
 
         {hasLeaf && (
           <>
+            <div className="position-mode" role="radiogroup" aria-label="Print position setting">
+              <span>Print positions:</span>
+              <button type="button" role="radio" aria-checked={!manual} className={manual ? '' : 'active'} onClick={() => setMode('default')}>Default</button>
+              <button type="button" role="radio" aria-checked={manual} className={manual ? 'active' : ''} onClick={() => setMode('manual')}>Manual</button>
+              <span className="hint">
+                {manual
+                  ? 'Manual: each position has its own fields and its own X / Y. Changing one never changes another.'
+                  : `Default: set the fields and X / Y on the main position; the other three follow it. Vertical prints ${VERTICAL_LIFT_MM} mm higher than horizontal.`}
+              </span>
+            </div>
             <div className="position-tabs" role="tablist" aria-label="Print position">
               {READY_POSITIONS.map(r => {
                 const s = shiftFor(draft.layout, r.key);
                 return (
                   <button key={r.key} type="button" role="tab" aria-selected={tab === r.key} className={tab === r.key ? 'active' : ''} onClick={() => { setTab(r.key); setSelected(null); }}>
                     <strong>{TAB_NAMES[r.key]}</strong>
-                    <span>{s.auto ? 'Automatic' : 'Own setting'} · {shiftText(s)}</span>
+                    <span>{manual ? 'Own setting' : s.auto ? 'Follows main' : 'Main'} · {shiftText(s)}</span>
                   </button>
                 );
               })}
             </div>
             <div className="row position-shift">
               <span className="hint">
-                {onMain ? 'Main position: the other three follow it.' : tabShift.auto ? `Follows the main position${tab.endsWith('-v') ? `, ${VERTICAL_LIFT_MM} mm higher because vertical prints lower` : ''}.` : 'Own setting for this position.'} Move the whole print:
+                {editable ? 'Print adjustment for this position (mm), moves the whole print:' : `Follows the main position${tab.endsWith('-v') ? `, ${VERTICAL_LIFT_MM} mm higher` : ''}. Change it on the main tab, or switch to Manual.`}
               </span>
-              <label>X →<input type="number" step="0.5" value={tabShift.x} onChange={e => setTabShift({ x: Number(e.target.value), y: tabShift.y })} /></label>
-              <label>Y ↑<input type="number" step="0.5" value={tabShift.y} onChange={e => setTabShift({ x: tabShift.x, y: Number(e.target.value) })} /></label>
-              {!onMain && !tabShift.auto && <button type="button" className="link" onClick={() => setLayout(withPositionShift(draft.layout, tab, null))}>Follow the main position</button>}
+              <label>X →<input type="number" step="0.5" readOnly={!editable} value={tabShift.x} onChange={e => setTabShift({ x: Number(e.target.value), y: tabShift.y })} /></label>
+              <label>Y ↑<input type="number" step="0.5" readOnly={!editable} value={tabShift.y} onChange={e => setTabShift({ x: tabShift.x, y: Number(e.target.value) })} /></label>
             </div>
             <div className="canvas-wrap">
               <ChequeCanvas
@@ -292,17 +292,17 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
                 items={rendered.items}
                 fontFamily={settings.fontFamily}
                 image={draft.image}
-                editable={onMain}
+                editable={editable}
                 selected={selected}
                 onSelect={setSelected}
-                onChange={L => setLayout(unshift(L))}
+                onChange={setShown}
                 graph
               />
             </div>
             <p className="hint">
-              {onMain
+              {editable
                 ? 'Drag a box to move it, drag its corner to resize. Arrow keys move the selected box 0.5 mm (Shift: 0.1 mm). The cheque image is never printed.'
-                : 'This is where the text prints in this position. Change the fields on the main position; move the whole print here.'}
+                : 'This is where the text prints in this position. In the default setting the fields are changed on the main tab.'}
             </p>
             {rendered.warnings.map(w => <p key={w} className="warning">{w}</p>)}
           </>
@@ -326,9 +326,9 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
               {graphRows(shown).map(row => (
                 <tr key={row.key} className={selected === row.key ? 'selected' : ''}>
                   <td className="name" onClick={() => setSelected(row.key)}>{row.label}</td>
-                  <td><input type="number" step="0.5" readOnly={!onMain} value={row.start.x} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { x: Number(e.target.value) - tabShift.x })} /></td>
-                  <td><input type="number" step="0.5" readOnly={!onMain} value={row.start.y} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { y: Number(e.target.value) - tabShift.y })} /></td>
-                  <td>{row.fixedLength ? <span className="hint">{row.start.length}</span> : <input type="number" step="0.5" readOnly={!onMain} value={row.start.length} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { length: Number(e.target.value) })} />}</td>
+                  <td><input type="number" step="0.5" readOnly={!editable} value={row.start.x} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { x: Number(e.target.value) })} /></td>
+                  <td><input type="number" step="0.5" readOnly={!editable} value={row.start.y} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { y: Number(e.target.value) })} /></td>
+                  <td>{row.fixedLength ? <span className="hint">{row.start.length}</span> : <input type="number" step="0.5" readOnly={!editable} value={row.start.length} onFocus={() => setSelected(row.key)} onChange={e => setGraph(row.key, { length: Number(e.target.value) })} />}</td>
                 </tr>
               ))}
             </tbody>
@@ -346,7 +346,7 @@ export function TemplateEditor({ initial, settings, onCancel, onSaved, saveLabel
             </select>
           </label>
           <p className="hint">If the cheque already has A/C PAYEE printed on it, choose the "Or Bearer" strike only, so it is not printed twice.</p>
-          <button onClick={() => { setSelected(null); setLayout(toggleDateMode(draft.layout)); }}>
+          <button onClick={() => { setSelected(null); setLayout(mapAllPositions(draft.layout, toggleDateMode)); }}>
             {draft.layout.date.mode === 'line' ? 'Date has 8 digit boxes' : 'Date is written on a line'}
           </button>
         </aside>

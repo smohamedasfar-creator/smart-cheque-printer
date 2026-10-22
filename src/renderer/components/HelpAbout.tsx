@@ -8,11 +8,11 @@ const STEPS: Array<[string, string]> = [
   ],
   [
     'Check the layout',
-    'The cheque is shown on graph paper with sample text, (0, 0) at its bottom-left corner. Each field has an X, Y and length in mm: type them or drag the boxes. Choose the crossing for this cheque (only the "or bearer" strike if A/C PAYEE is already printed on it). Then enter the cheque book name and last cheque number.',
+    'On the same screen, the cheque is shown on graph paper with sample text, (0, 0) at its bottom-left corner. Each field has an X, Y and length in mm: type them or drag the boxes. Four tabs show the four print positions. Default setting: fields and X / Y are set on the main tab (back tray, horizontal) and the others follow it, vertical 5.5 mm higher. Manual setting: each position has its own fields and X / Y, and changing one never changes another. Choose the crossing for this cheque, then fill in the cheque book details below.',
   ],
   [
     'Set up printing once',
-    'In the cheque book details, set up the main position first: back tray, horizontal (top edge first). Load a photocopy of the cheque as the picture shows and press Test print. If the text is not on the cheque lines, move the whole print with the Up, Down, Left and Right buttons (1 mm each) and test again, then press Save cheque book. The other three positions (back tray vertical, front tray horizontal and vertical) follow it automatically; vertical prints 3.5 mm higher because printing vertically lands lower. If one of them is still off, choose it and adjust it the same way: it keeps its own setting. (For half-millimetre accuracy, Advanced has a printed graph.)'
+    'Under Set up printing, choose how you load the cheque (back tray horizontal is the main position). Load a photocopy of the cheque as the picture shows and press Test print. If the text is not on the cheque lines, move the whole print with the Up, Down, Left and Right buttons (1 mm each), or press Print graph to print mm graph paper on the cheque copy and read where each line starts, then type it in the field table. Press Save cheque book: the layout and the details are saved together.'
   ],
   [
     'Write and print',
