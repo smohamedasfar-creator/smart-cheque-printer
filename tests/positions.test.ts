@@ -33,11 +33,11 @@ describe('ready print positions', () => {
   test('every cheque book gets back and front tray, horizontal (main) and vertical', () => {
     const list = withReadyPositions(layout, []);
     expect(list.map(p => p.name)).toEqual(READY_POSITIONS.map(r => r.name));
-    expect(READY_POSITIONS.map(r => r.key)).toEqual(['rear-h', 'rear-v', 'front-h', 'front-v']);
-    expect(list.map(p => p.tray)).toEqual(['rear', 'rear', 'front', 'front']);
+    expect(READY_POSITIONS.map(r => r.key)).toEqual(['rear-h', 'rear-v', 'front-h', 'front-v', 'manual-h', 'manual-v']);
+    expect(list.map(p => p.tray)).toEqual(['rear', 'rear', 'front', 'front', 'manual', 'manual']);
     // Horizontal and vertical differ by a quarter turn.
     expect(Math.abs(list[0].rotation - list[1].rotation) % 180).toBe(90);
-    expect(list.map(p => positionKeyOf(layout, p))).toEqual(['rear-h', 'rear-v', 'front-h', 'front-v']);
+    expect(list.map(p => positionKeyOf(layout, p))).toEqual(['rear-h', 'rear-v', 'front-h', 'front-v', 'manual-h', 'manual-v']);
   });
 
   test('a saved position loaded the same way keeps its place; other saved positions follow the ready ones', () => {
@@ -45,12 +45,15 @@ describe('ready print positions', () => {
     const saved: PrintPosition[] = [
       { name: 'Manual slot', tray: 'manual', rotation: 0, x: 1, y: 2 },
       { name: 'Back tray · Date end', tray: 'rear', ...v, x: v.x + 3, calibrated: true },
+      { name: 'Back tray · logo end', tray: 'rear', rotation: 90, x: 5, y: 0 },
     ];
     const list = withReadyPositions(layout, saved);
-    expect(list).toHaveLength(5);
+    expect(list).toHaveLength(7);
     expect(list[1]).toMatchObject({ name: READY_POSITIONS[1].name, x: v.x + 3, calibrated: true });
-    expect(list[4].name).toBe('Manual slot');
-    expect(positionKeyOf(layout, list[4])).toBeNull();
+    // The manual slot, horizontal, takes the place of the ready one and keeps where it was.
+    expect(list[4]).toMatchObject({ name: READY_POSITIONS[4].name, x: 1, y: 2 });
+    expect(list[6].name).toBe('Back tray · logo end');
+    expect(positionKeyOf(layout, list[6])).toBeNull();
   });
 
   test('turning a position half round does not move the others', () => {
@@ -157,7 +160,7 @@ describe('older cheque books are brought up to date once', () => {
     expect(modeOf(L)).toBe('default');
     // 4 mm higher, plus the 1.8.1 horizontal move (6 mm right, 2 mm down).
     expect(shiftFor(L, 'rear-h')).toEqual({ x: 6, y: 2, auto: false });
-    expect(positions.slice(0, 4).map(p => [p.x, p.y])).toEqual(list.map(p => [p.x, p.y]));
+    expect(positions.slice(0, 4).map(p => [p.x, p.y])).toEqual(list.slice(0, 4).map(p => [p.x, p.y]));
     expect(migratePositions(L, positions).changed).toBe(false);
   });
 

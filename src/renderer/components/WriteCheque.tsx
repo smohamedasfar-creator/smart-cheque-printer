@@ -9,7 +9,7 @@ import { createMeasure } from '../measure';
 import { ChequeCanvas } from './ChequeCanvas';
 import { activePositionIndex } from './ChequeBookSetup';
 import { loadCheck } from '../../shared/loading';
-import { trayGeometry } from '../../shared/printerCalibration';
+import { chequeTray, paperSide, TRAY_TITLE, trayGeometry, trayOffset, viewOnSide } from '../../shared/printerCalibration';
 import { PrintCorrection } from './PrintCorrection';
 import { TrayPicture } from './TrayPicture';
 import { WordBreakPicker } from './WordBreakPicker';
@@ -47,7 +47,13 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
   // Every cheque book can print from the four ready positions, whatever it saved so far.
   const positions = account && template ? withReadyPositions(template.layout, account.positions) : account?.positions ?? [];
   const savedPlacement = account && account.feedRotation !== null && account.pageX !== null && account.pageY !== null ? { rotation: account.feedRotation, x: account.pageX, y: account.pageY } : null;
-  const activePos = account ? (savedPlacement ? activePositionIndex({ ...account, positions }) : positions.length ? 0 : -1) : -1;
+  const savedPos = account ? (savedPlacement ? activePositionIndex({ ...account, positions }) : positions.length ? 0 : -1) : -1;
+  // The tray comes from Settings → Printer setup: keep the cheque book's direction (horizontal or vertical) in that tray.
+  const settingsTray = chequeTray(settings);
+  const savedRot = positions[savedPos]?.rotation;
+  const savedVertical = savedRot === 90 || savedRot === 270;
+  const inTray = READY_POSITIONS.findIndex(r => r.tray === settingsTray && (r.leading === 270) === savedVertical);
+  const activePos = savedPos >= 0 && positions[savedPos]?.tray !== settingsTray && inTray >= 0 ? inTray : savedPos;
   // The preview shrinks to fit its column, so wide cheques are never cut off.
   const fit = useFitScale(template?.layout.chequeWidth ?? 200, 5);
 
@@ -203,16 +209,31 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
             ))}
           </select>
         </label>
-        {positions.length > 1 && (
-          <label>
-            Print position (how the cheque is loaded)
-            <select value={activePos} onChange={e => choosePosition(Number(e.target.value))}>
-              {activePos < 0 && <option value={-1}>Current setting · {LEADING_EDGE[account.feedRotation ?? settings.feedRotation ?? 0]}</option>}
-              {positions.map((p, i) => (
-                <option key={i} value={i}>{i < READY_POSITIONS.length ? p.name : `${p.name} · ${LEADING_EDGE[p.rotation]}`}</option>
-              ))}
-            </select>
-          </label>
+        {positions.length > 0 && (
+          <div className="direction-choice">
+            <span>How is the cheque put in? <span className="hint">({TRAY_TITLE[chequeTray(settings)]})</span></span>
+            <div className="feed-options two">
+              {(['h', 'v'] as const).map(d => {
+                const i = READY_POSITIONS.findIndex(r => r.tray === chequeTray(settings) && r.leading === (d === 'h' ? 0 : 270));
+                return (
+                  <button key={d} type="button" disabled={i < 0} className={i >= 0 && i === activePos ? 'feed-option active' : 'feed-option'} onClick={() => i >= 0 && choosePosition(i)}>
+                    <strong>{d === 'h' ? '▭ Horizontal' : '▯ Vertical'}</strong>
+                  </button>
+                );
+              })}
+            </div>
+            {positions.length > READY_POSITIONS.length || (activePos >= 0 && positions[activePos]?.tray !== chequeTray(settings)) ? (
+              <details className="advanced">
+                <summary>Other saved positions</summary>
+                <select value={activePos} onChange={e => choosePosition(Number(e.target.value))}>
+                  {activePos < 0 && <option value={-1}>Current setting · {LEADING_EDGE[account.feedRotation ?? settings.feedRotation ?? 0]}</option>}
+                  {positions.map((p, i) => (
+                    <option key={i} value={i}>{i < READY_POSITIONS.length ? p.name : `${p.name} · ${LEADING_EDGE[p.rotation]}`}</option>
+                  ))}
+                </select>
+              </details>
+            ) : null}
+          </div>
         )}
         <div className="row">
           <label>
@@ -290,24 +311,14 @@ export function WriteCheque({ accounts, templates, settings, onPrinted, onGoTo }
               layout={template.layout}
               image={template.image}
               tray={trayGeometry(positions[activePos]?.tray ?? 'rear', settings)}
-              view={pageToTray(template.layout, trayGeometry(positions[activePos]?.tray ?? 'rear', settings), { rotation: placement.rotation, x: placement.x, y: placement.y })}
+              view={viewOnSide(
+                template.layout,
+                trayGeometry(positions[activePos]?.tray ?? 'rear', settings),
+                pageToTray(template.layout, trayGeometry(positions[activePos]?.tray ?? 'rear', settings), { rotation: placement.rotation, x: placement.x, y: placement.y }),
+                paperSide(settings, positions[activePos]?.tray ?? 'rear'),
+              )}
               interactive={false}
               scale={0.9}
-            />
-          </details>
-        )}
-        {template && rendered && 'print' in rendered && rendered.print && placement.rotation !== null && placement.x !== null && placement.y !== null && (
-          <details className="advanced">
-            <summary>Printed in the wrong place? Fix it by dragging</summary>
-            <p className="hint">Drag the text to where it printed on your cheque (or test page), then press Fix position. The next print moves it back.</p>
-            <PrintCorrection
-              layout={template.layout}
-              image={template.image}
-              items={rendered.print.items}
-              fontFamily={settings.fontFamily}
-              placement={{ rotation: placement.rotation, x: placement.x, y: placement.y }}
-              onApply={applyCorrection}
-              scale={2.6}
             />
           </details>
         )}

@@ -81,7 +81,7 @@ export type PositionMode = 'default' | 'manual';
 export type PositionFields = Pick<ChequeLayout, 'payee' | 'payee2' | 'amount' | 'words1' | 'words2' | 'date' | 'acPayee' | 'bearerStrike' | 'crossingLines'>;
 
 /** The four ready print positions: back or front tray, horizontal (top edge first) or vertical (date end first). */
-export type PositionKey = 'rear-h' | 'rear-v' | 'front-h' | 'front-v';
+export type PositionKey = 'rear-h' | 'rear-v' | 'front-h' | 'front-v' | 'manual-h' | 'manual-v';
 
 export interface ChequeTemplate {
   id: number;
@@ -147,6 +147,13 @@ export interface PrintSettings {
   printerOffsets?: Record<string, Partial<Record<'rear' | 'front' | 'manual', { x: number; y: number }>>>;
   /** For each printer (by name): true when its front tray prints on the side facing up (most print on the side facing down). */
   frontTrayFaceUp?: Record<string, boolean>;
+  /**
+   * For each printer (by name) and tray: where paper smaller than A4 sits, as seen standing in front of the printer
+   * (Epson ink tanks centre it, HP ink tanks hold it against the right side). Unset = guessed from the printer name.
+   */
+  paperSide?: Record<string, Partial<Record<'rear' | 'front' | 'manual', 'left' | 'centre' | 'right'>>>;
+  /** For each printer (by name): the tray cheques are put in (unset = suggested from the printer model). */
+  chequeTray?: Record<string, 'rear' | 'front' | 'manual'>;
   /** Days before a cheque's date to remind (default 15 and 7). */
   reminderDays?: number[];
   /** Show a Windows notification when a cheque reaches a reminder (default on). */

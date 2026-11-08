@@ -1,5 +1,7 @@
+import { withAdmin } from '../admin';
 import { useEffect, useState } from 'react';
 import { PrinterSetup } from './PrinterSetup';
+import { AdminSettings } from './AdminSettings';
 import { DEFAULT_REMINDER_DAYS, MAX_REMINDER_DAYS } from '../../shared/payments';
 import { amountInWords } from '../../shared/amountInWords';
 import { TEXT_SIZES } from '../../shared/chequeRender';
@@ -94,7 +96,8 @@ function DataBackup() {
     if (r.saved) setMessage({ kind: 'ok', text: `Backup saved to ${r.path}` });
   };
   const restore = async () => {
-    const r = await window.chequeApi.restoreData();
+    const r = await withAdmin(() => window.chequeApi.restoreData(), 'Restoring a backup needs the admin password.');
+    if (!r) return;
     if (r.error) setMessage({ kind: 'error', text: r.error });
   };
   return (
@@ -169,6 +172,19 @@ export function SettingsPanel({ settings, onSave }: Props) {
 
   return (
     <section className="settings form">
+      <PrinterSetup
+        settings={draft}
+        printers={printers}
+        onApply={async next => {
+          setDraft(next);
+          await onSave(next);
+        }}
+      />
+
+      <AdminSettings />
+
+      <details className="advanced more-settings">
+      <summary>More settings: amount in words, text, reminders, backup</summary>
       <h2>Amount in words</h2>
       <div className="row">
         <label>
@@ -226,23 +242,6 @@ export function SettingsPanel({ settings, onSave }: Props) {
       <label className="check"><input type="checkbox" checked={draft.reminderNotifications !== false} onChange={e => set('reminderNotifications', e.target.checked)} /> Show a Windows notification when a cheque is due (also on the day, and after it until marked cleared)</label>
       <p className="hint">The Payments tab lists the reminders and how much is to be paid each month. Press Save settings to keep changes.</p>
 
-      <h2>Printer</h2>
-      <label>
-        Printer
-        <select value={draft.printerName} onChange={e => set('printerName', e.target.value)}>
-          <option value="">Ask every time</option>
-          {printers.map(p => <option key={p.name} value={p.name}>{p.name}{p.isDefault ? ' (default)' : ''}</option>)}
-        </select>
-      </label>
-
-      <PrinterSetup
-        settings={draft}
-        onApply={async next => {
-          setDraft(next);
-          await onSave(next);
-        }}
-      />
-
       <details className="advanced">
         <summary>Advanced: ruler calibration and paper settings (older method)</summary>
         <label>
@@ -290,6 +289,7 @@ export function SettingsPanel({ settings, onSave }: Props) {
       <h2>Your data</h2>
       <p className="hint">Back up your cheque books, payees, history and settings to a file, for example before changing computers.</p>
       <DataBackup />
+      </details>
 
       <div className="actions">
         <button className="primary" onClick={async () => { await onSave(draft); setSaved(true); }}>Save settings</button>

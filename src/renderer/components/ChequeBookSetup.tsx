@@ -5,7 +5,7 @@ import { guessTray } from '../../shared/loading';
 import { correctPlacement, defaultTrayView, LEADING_EDGE, pageGeometry, pageToTray, printProblems, TRAY_KINDS, trayToPage, type Placement, type TrayGeometry, type TrayKind } from '../../shared/print';
 import type { Account, ChequeLayout, FeedRotation, NewAccount, PrintPosition, PrintSettings } from '../../shared/types';
 import { createMeasure } from '../measure';
-import { trayGeometry, trayOffset } from '../../shared/printerCalibration';
+import { chequeTray, PAPER_SIDE_LABEL, paperSide, TRAY_TITLE, trayGeometry, trayOffset, viewOnSide } from '../../shared/printerCalibration';
 import { loadCheck } from '../../shared/loading';
 import { calibrateAsync, imageRaster, loadUpload } from '../upload';
 import { activePositionIndex, adjustPosition, anyPositionSetUp, markActive, layoutForPosition, MAIN_POSITION, modeOf, placementToShift, positionKeyOf, READY_POSITIONS, readyPlacement, resetShift, shiftFor, hasOwnAdjustments, verticalDiffText, withoutOwnAdjustments, withReadyPositions, withShift, type Shift } from '../../shared/positions';
@@ -58,11 +58,18 @@ const defaultTurn = (t: TrayGeometry) => TRAY_KINDS[t].turnFor(270);
 
 /** Cheque book details and setting up printing, below the cheque layout on the same screen. */
 export function ChequeBookSetup({ account, layout, image, onLayout, settings, bind }: SetupProps) {
-  // The four ready positions are always there; a new cheque book starts on the main one (back tray, horizontal).
+  const settingsChequeTray = chequeTray(settings);
+  // The ready positions are always there; a new cheque book starts on the printer's cheque tray, horizontal.
   const positions0 = withReadyPositions(layout, account.positions ?? []);
   const unplaced = account.pageX === null || account.pageY === null || account.feedRotation === null;
-  const saved0 = activePositionIndex({ ...account, positions: positions0 });
-  const idx0 = saved0 >= 0 ? saved0 : unplaced && positions0.length ? 0 : -1;
+  const savedAt = activePositionIndex({ ...account, positions: positions0 });
+  // Open on the tray chosen in Settings → Printer setup, keeping the cheque book's direction (horizontal or vertical).
+  const trayNow = settingsChequeTray;
+  const savedRot0 = positions0[savedAt]?.rotation;
+  const sameDirection = READY_POSITIONS.findIndex(r => r.tray === trayNow && (r.leading === 270) === (savedRot0 === 90 || savedRot0 === 270));
+  const saved0 = savedAt >= 0 && positions0[savedAt]?.tray !== trayNow && sameDirection >= 0 ? sameDirection : savedAt;
+  const firstInTray = READY_POSITIONS.findIndex(r => r.tray === settingsChequeTray && r.leading === 0);
+  const idx0 = saved0 >= 0 ? saved0 : unplaced && positions0.length ? Math.max(0, firstInTray) : -1;
   const start0 = idx0 >= 0 ? { feedRotation: positions0[idx0].rotation, pageX: positions0[idx0].x, pageY: positions0[idx0].y } : {};
   const [draft, setDraft] = useState({ ...account, ...start0, positions: positions0 });
   const [activeIdx, setActiveIdx] = useState<number | null>(idx0 >= 0 ? idx0 : null);
@@ -82,6 +89,22 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   const measure = useMemo(() => createMeasure(settings.fontFamily), [settings.fontFamily]);
   const set = <K extends keyof NewAccount>(key: K, value: NewAccount[K]) => setDraft(d => ({ ...d, [key]: value }));
 
+  /** The tray this printer's cheques go in (Settings → Printer setup). */
+  const mainTray = chequeTray(settings);
+  /** Horizontal (long edge first) or vertical (short edge first). */
+  const directionOf = (r: FeedRotation) => (r === 0 || r === 180 ? 'h' : 'v');
+  /** Horizontal or vertical in the printer's cheque tray: the ready position for it, or a fresh one for the manual slot. */
+  const chooseSimple = (d: 'h' | 'v') => {
+    const leading: FeedRotation = d === 'h' ? 0 : 270;
+    const i = READY_POSITIONS.findIndex(r => r.tray === mainTray && r.leading === leading);
+    if (i >= 0) return selectPosition(i);
+    const g = trayGeometry(mainTray, settings);
+    setTray(mainTray);
+    setCalibrated(false);
+    setMoved({ x: 0, y: 0 });
+    setTested(false);
+    setPlacement(trayToPage(layout, g, defaultTrayView(layout, g, TRAY_KINDS[g].turnFor(leading))));
+  };
   /** The tray as this printer handles it: the front drawer may print on the side facing up (Settings). */
   const geo = trayGeometry(tray, settings);
   // The placement printed now: the cheque book's own one, or a centred cheque pushed fully into the chosen tray.
@@ -89,6 +112,8 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
     draft.pageX !== null && draft.pageY !== null && draft.feedRotation !== null
       ? { rotation: draft.feedRotation, x: draft.pageX, y: draft.pageY }
       : trayToPage(layout, geo, defaultTrayView(layout, geo, defaultTurn(geo)));
+  /** Where this printer's tray puts a cheque (Settings); the picture and the print follow it. */
+  const side = paperSide(settings, tray);
   const view = pageToTray(layout, geo, placement);
   /** Which ready position is being set up; its X / Y moves the whole print on the cheque. */
   const key = positionKeyOf(layout, { tray, rotation: placement.rotation });
@@ -125,7 +150,6 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
         const guess = guessTray(name);
         if (!alive || !guess) return;
         setPrinterGuess({ name, ...guess });
-        if (unplaced && (account.positions ?? []).length === 0 && guess.tray === 'front') selectPosition(READY_POSITIONS.findIndex(r => r.tray === 'front'));
       })
       .catch(() => {
         // no printer list: keep the back tray
@@ -228,15 +252,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   // The screen's Save reads the cheque book with the position being edited written in.
   useEffect(() => bind(() => withCurrent('update')));
 
-  /** Option 1: graph paper in mm over the cheque copy, counted from its bottom-left corner, to read where each line starts. */
-  const printGraph = async () => {
-    const result = await window.chequeApi.print({ items: [], layout, settings, testPrint: false, graph: true, placement, tray });
-    if (!result.ok) { setMessage({ kind: 'error', text: result.error ?? 'Print failed' }); return; }
-    setTestedFor(placement);
-    setMessage({ kind: 'ok', text: 'Graph sent. On the printed copy, read where each line starts (red X, blue Y) and type it in "Where each field starts" above.' });
-  };
-
-  /** Option 2: move the whole print on the cheque by 1 mm (right and up positive), whichever way it goes into the printer. */
+  /** Fine-tuning: move the whole print on the cheque by 1 mm (right and up positive), whichever way it goes into the printer. */
   const nudge = (right: number, up: number) => {
     if (key) {
       const now = shiftFor(layout, key);
@@ -293,6 +309,7 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
   };
 
   const rotation = placement.rotation;
+  const direction = directionOf(rotation);
   const onPage = printProblems(sample.items, pageGeometry(layout, settings, placement), measure);
   return (
     <div className="details-layout">
@@ -305,21 +322,17 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
         <label>Last cheque number used<input value={draft.lastChequeNo} onChange={e => set('lastChequeNo', e.target.value)} placeholder="e.g. 000123 — the next cheque will be 000124" /></label>
 
         <h3>Set up printing</h3>
-        <p className={setUp || calibrated ? 'success' : 'hint'}>
-          {setUp || calibrated ? '✓ Set up: this cheque book prints in place on your printer.' : 'Not set up yet. Set up one position and the other three follow:'}
+        <p className="load-summary">
+          Printer: <b>{settings.printerName || 'asked when printing'}</b> · {TRAY_TITLE[mainTray]} · cheque sits: {PAPER_SIDE_LABEL[paperSide(settings, mainTray)].toLowerCase()}{' '}
+          <span className="hint">(change in Settings → Printer setup)</span>
         </p>
-        <p className="hint">
-          How will you load the cheque?{' '}
-          {manual
-            ? 'Manual setting: each position has its own fields and X / Y; changing one never changes another.'
-            : `Default setting: one X / Y for all four; vertical prints ${verticalDiffText(layout)}. Switch to Manual in the cheque layout above to set each position on its own.`}
-        </p>
-        <div className="feed-options ready-positions">
-          {READY_POSITIONS.map((r, i) => (
-            <button key={r.name} type="button" className={i === activeIdx ? 'feed-option active' : 'feed-option'} onClick={() => selectPosition(i)}>
-              <strong>{r.tray === 'rear' ? 'Back tray' : 'Front tray'}{r.key === MAIN_POSITION ? ' · main' : ''}</strong>
-              <span>{r.leading === 270 ? 'Vertical · date end first' : 'Horizontal · top edge first'}</span>
-              <span className="hint">{describeShift(shiftFor(layout, r.key))}</span>
+        <strong>How do you put this cheque in?</strong>
+        <div className="feed-options two">
+          {(['h', 'v'] as const).map(d => (
+            <button key={d} type="button" className={direction === d && tray === mainTray ? 'feed-option active' : 'feed-option'} onClick={() => chooseSimple(d)}>
+              <span className="feed-icon">{d === 'h' ? '▭' : '▯'}</span>
+              <strong>{d === 'h' ? 'Horizontal' : 'Vertical'}</strong>
+              <span className="hint">{d === 'h' ? 'Lying sideways, top edge goes in first' : 'Standing up, date end goes in first'}</span>
             </button>
           ))}
         </div>
@@ -330,31 +343,14 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
         )}
         {trayOffset(settings, tray) && hasOwnAdjustments(layout) && (
           <p className="hint own-adjustments">
-            This cheque book still has its own adjustments from before the printer was calibrated (X / Y{modeOf(layout) === 'manual' ? ', manual positions' : ''}, vertical difference).{' '}
+            This cheque book keeps its own settings from before the printer was calibrated (they still work). To use only the printer calibration, the same for horizontal and vertical:{' '}
             <button type="button" className="link" onClick={() => { onLayout(withoutOwnAdjustments(layout)); setMessage({ kind: 'ok', text: 'Now printing with the printer calibration only. Test print to check, then Save cheque book.' }); }}>Use only the printer calibration</button>
           </p>
         )}
-        <p className="load-summary">
-          Load it: {loadCheck(geo, placement.rotation).map(c => `${c.label}: ${c.value}`).join(' · ')}
-        </p>
-        <p>Load a photocopy of this cheque as the picture shows, then use one of the two options:</p>
-        <div className="setup-options">
-          <div className="setup-option">
-            <h4>Option 1 · Graph</h4>
-            <ol className="setup-steps">
-              <li><button type="button" className="primary" onClick={printGraph} disabled={!!busy}>Print graph</button> on the cheque copy.</li>
-              <li>On the printed copy, read where each line starts: the red number is X, the blue number is Y.</li>
-              <li>Type them in &quot;Where each field starts&quot; in the cheque layout above. The text then prints exactly there.</li>
-            </ol>
-          </div>
-          <div className="setup-option">
-            <h4>Option 2 · Manual adjustment</h4>
-            <ol className="setup-steps">
-          <li>
-            <button type="button" className="primary" onClick={() => testPrint(false)}>Test print</button>
-          </li>
-          <li>
-            Is the text on the cheque lines? If not, move the whole print and test again:
+        <ol className="setup-steps">
+          <li>Load a photocopy of this cheque exactly as the picture shows ({PAPER_SIDE_LABEL[side].toLowerCase()} of the tray), then <button type="button" className="primary" onClick={() => testPrint(false)}>Test print</button></li>
+          <li>Hold it over a real cheque against the light: the text should sit on the lines. Only if it is still a little off:
+            <details className="advanced"><summary>Move the whole print</summary>
             <div className="nudge" role="group" aria-label="Move the print">
               <button type="button" onClick={() => nudge(0, 1)} title="Move the print 1 mm up">↑ Up</button>
               <button type="button" onClick={() => nudge(0, -1)} title="Move the print 1 mm down">↓ Down</button>
@@ -362,76 +358,15 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
               <button type="button" onClick={() => nudge(1, 0)} title="Move the print 1 mm right">→ Right</button>
               <span className="hint">1 mm each click</span>
             </div>
-            <span className="hint">{manual ? 'Moves this position only.' : `Moves all four positions together; vertical prints ${verticalDiffText(layout)}.`}</span>
+            <span className="hint">{manual ? 'Moves this position only.' : 'Moves horizontal and vertical together.'}</span>
+            </details>
           </li>
-            </ol>
-          </div>
-        </div>
+        </ol>
         <p className="hint">When the text sits on the lines, press Save cheque book.</p>
         {busy && <div className="busy">{busy}</div>}
         {message && <p className={message.kind === 'ok' ? 'success' : 'error'}>{message.text}</p>}
         {onPage.map(w => <p key={w} className="warning">{w}</p>)}
 
-        <details className="advanced" onToggle={e => setAdvanced((e.target as HTMLDetailsElement).open)}>
-          <summary>Advanced: tray, direction and manual adjustment</summary>
-          <h3>Set up from a scan instead</h3>
-          <p className="hint">Print a test page with dot rows, scan the printed cheque at 300 DPI on a flatbed scanner and choose the scan: the app reads where the ink landed.</p>
-          <div className="actions">
-            <button type="button" onClick={printTestPage} disabled={!!busy}>Print test page</button>
-            <button type="button" onClick={() => scanInput.current?.click()} disabled={!!busy}>Choose the scan</button>
-            <input ref={scanInput} type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden onChange={e => { onScan(e.target.files?.[0]); e.target.value = ''; }} />
-          </div>
-          <h3>Print positions</h3>
-          <p className="hint">One position for every way this cheque book goes into a printer. You choose the position when printing.</p>
-          {draft.positions.length > 0 && (
-            <div className="positions">
-              {draft.positions.map((p, i) => (
-                <div key={i} className={i === activeIdx ? 'position active' : 'position'}>
-                  <div>
-                    <strong>{p.name}</strong>
-                    <span className="hint">{describePosition(p)}{p.calibrated ? ' · calibrated' : ''}</span>
-                  </div>
-                  <div className="actions">
-                    {i === activeIdx ? <span className="tag">Editing</span> : <button type="button" onClick={() => selectPosition(i)}>Edit</button>}
-                    {i >= READY_POSITIONS.length && <button type="button" onClick={() => removePosition(i)}>Delete</button>}
-                  </div>
-                </div>
-              ))}
-              <button type="button" onClick={newPosition}>+ Add another position</button>
-            </div>
-          )}
-          <label>Position name<input value={posName} onChange={e => setPosName(e.target.value)} placeholder="e.g. Back tray · date end first" /></label>
-
-          <h3>Which tray?</h3>
-          {printerGuess && (
-            <p className="hint">
-              Usual for <b>{printerGuess.name}</b>: {TRAYS.find(t => t.value === printerGuess.tray)?.title}, because {printerGuess.reason}.
-            </p>
-          )}
-          <div className="feed-options three">
-            {TRAYS.map(t => (
-              <button key={t.value} type="button" className={tray === t.value ? 'feed-option active' : 'feed-option'} onClick={() => chooseTray(t.value)}>
-                <strong>{t.title}</strong>
-                <span className="hint">{t.hint}</span>
-              </button>
-            ))}
-          </div>
-
-          <h3>Which end goes in first?</h3>
-          <div className="feed-options">
-            {FEED_OPTIONS.map(o => (
-              <button key={o.value} type="button" className={rotation === o.value ? 'feed-option active' : 'feed-option'} title={LEADING_EDGE[o.value]} onClick={() => chooseDirection(o.value)}>
-                <span className="feed-icon">{o.icon}</span>
-                <span>{o.title}</span>
-              </button>
-            ))}
-          </div>
-          <p className="hint">Slide the cheque on the tray picture to where it sits, or line it up with a guide. Then drag the text on the cheque picture to where a test printed.</p>
-          <div className="actions">
-            <button type="button" onClick={() => testPrint(false)}>Test print (text only)</button>
-            <button type="button" onClick={() => testPrint(true)} title="Crosshairs at the corners and centre with their distances">Print alignment marks</button>
-          </div>
-        </details>
       </div>
       {view && (
         <div className="preview placement-preview">
@@ -439,8 +374,8 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
             layout={layout}
             image={image}
             tray={geo}
-            view={view}
-            interactive={advanced}
+            view={viewOnSide(layout, geo, view, side)}
+            interactive={false}
             onChange={v => {
               setCalibrated(false);
               setPlacement(trayToPage(layout, geo, v));
@@ -448,26 +383,6 @@ export function ChequeBookSetup({ account, layout, image, onLayout, settings, bi
               if (key) onLayout(resetShift(layout, key));
             }}
           />
-          {advanced && (
-            <div className="correction-panel">
-              <h3>Drag the text to where it printed</h3>
-              <PrintCorrection
-                layout={layout}
-                image={image}
-                items={sample.items}
-                fontFamily={settings.fontFamily}
-                placement={placement}
-                onApply={(next, what) => {
-                  if (key && next.rotation === placement.rotation) {
-                    const now = shiftFor(layout, key);
-                    const d = placementToShift(layout, placement, next);
-                    setShift({ x: now.x + d.x, y: now.y + d.y });
-                  } else setPlacement(next);
-                  setMessage({ kind: 'ok', text: `${what} Press Save cheque book to keep it.` });
-                }}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>

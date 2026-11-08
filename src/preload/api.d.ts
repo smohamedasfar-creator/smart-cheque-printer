@@ -1,4 +1,4 @@
-import type { ChequeFilter } from '../main/store';
+import type { ChequeFilter, SecurityStatus } from '../main/store';
 import type {
   Account,
   ChequeLayout,
@@ -41,6 +41,17 @@ export interface ChequeApi {
   renamePayee(oldName: string, newName: string): Promise<void>;
   deletePayee(name: string): Promise<void>;
   deleteCheque(id: number): Promise<void>;
+  /** Deletes several cheques; returns how many. */
+  deleteCheques(ids: number[]): Promise<number>;
+  securityStatus(): Promise<SecurityStatus & { unlocked: boolean; appUnlocked: boolean }>;
+  /** Unlocks the app at start (and admin operations for a few minutes). False when the password is wrong. */
+  login(password: string): Promise<boolean>;
+  /** Allows protected operations for a few minutes. False when the password is wrong. */
+  unlockAdmin(password: string): Promise<boolean>;
+  lockAdmin(): Promise<void>;
+  /** Sets (current null when none yet), changes or removes (next null) the admin password. */
+  setAdminPassword(current: string | null, next: string | null): Promise<void>;
+  setSecurityOptions(options: Pick<SecurityStatus, 'protectDelete' | 'protectSettings' | 'lockOnStart'>): Promise<void>;
   recordCheque(cheque: NewCheque): Promise<ChequeRecord>;
   listCheques(filter: ChequeFilter): Promise<ChequeRecord[]>;
   setChequeStatus(id: number, status: ChequeRecord['status']): Promise<void>;

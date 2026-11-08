@@ -1,7 +1,7 @@
 {
   "name": "smart-cheque-printer",
   "productName": "Smart Cheque Printer",
-  "version": "1.10.1",
+  "version": "1.13.0",
   "description": "Print cheques for any bank from a scan of a blank cheque leaf.",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -18,6 +18,7 @@
   },
   "build": {
     "appId": "com.smartcheque.printer",
+    "compression": "normal",
     "productName": "Smart Cheque Printer",
     "files": [
       "dist/**/*",
@@ -45,7 +46,7 @@
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true
     },
-    "copyright": "Copyright © 2026 Asfar"
+    "copyright": "Copyright © 2026 Smart Cheque Printer"
   },
   "dependencies": {
     "sql.js": "^1.15.1"
@@ -69,15 +70,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   },
-  "author": "Asfar",
-  "license": "MIT",
-  "homepage": "https://github.com/smohamedasfar-creator/smart-cheque-printer",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/smohamedasfar-creator/smart-cheque-printer.git"
-  },
-  "bugs": {
-    "url": "https://github.com/smohamedasfar-creator/smart-cheque-printer/issues",
-    "email": "support@optizer.ae"
-  }
+  "author": "Smart Cheque Printer",
+  "license": "MIT"
 }

@@ -9,6 +9,7 @@ import { Payments } from './components/Payments';
 import { Payees } from './components/Payees';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WriteCheque } from './components/WriteCheque';
+import { AdminPrompt, LockScreen, withAdmin } from './admin';
 
 export type Tab = 'write' | 'books' | 'payees' | 'history' | 'payments' | 'settings' | 'help';
 
@@ -29,6 +30,12 @@ export function App() {
   const [settings, setSettings] = useState<PrintSettings | null>(null);
   const [cheques, setCheques] = useState<ChequeRecord[]>([]);
   const [error, setError] = useState('');
+  /** null while checking; false while the app waits for the admin password at start. */
+  const [open, setOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    window.chequeApi.securityStatus().then(s => setOpen(s.appUnlocked)).catch(() => setOpen(true));
+  }, []);
 
   const reload = useCallback(async () => {
     const [a, t, c] = await Promise.all([window.chequeApi.listAccounts(), window.chequeApi.listTemplates(), window.chequeApi.listCheques({})]);
@@ -38,8 +45,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    window.chequeApi.listCheques({}).then(setCheques).catch(() => undefined);
-  }, [tab]);
+    if (open) window.chequeApi.listCheques({}).then(setCheques).catch(() => undefined);
+  }, [tab, open]);
 
   const reminders = settings ? dueReminders(cheques, todayIso(), settings.reminderDays ?? [...DEFAULT_REMINDER_DAYS]) : [];
   // A Windows notification when a cheque reaches a reminder: on opening the app and every hour while it is open.
@@ -52,19 +59,24 @@ export function App() {
   }, [cheques, settings]);
 
   useEffect(() => {
-    Promise.all([reload(), window.chequeApi.getSettings().then(setSettings)]).catch(e => setError(String(e)));
-  }, [reload]);
+    if (open) Promise.all([reload(), window.chequeApi.getSettings().then(setSettings)]).catch(e => setError(String(e)));
+  }, [reload, open]);
 
   const saveSettings = async (next: PrintSettings) => {
-    await window.chequeApi.saveSettings(next);
-    setSettings(next);
+    const saved = await withAdmin(async () => {
+      await window.chequeApi.saveSettings(next);
+      return true;
+    }, 'Changing settings needs the admin password.');
+    if (saved) setSettings(next);
   };
 
+  if (open === false) return <LockScreen onUnlocked={() => setOpen(true)} />;
   if (error) return <div className="fatal">Could not load data: {error}</div>;
   if (!settings) return <div className="loading">Loading…</div>;
 
   return (
     <div className="app">
+      <AdminPrompt />
       <header>
         <h1>Smart Cheque Printer</h1>
         <nav>

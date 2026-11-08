@@ -1,15 +1,19 @@
 // Contact and project links shown in Help & About. These are the only addresses the app will ever open.
 
+// Release builds carry only the developer credit: payment links, phone numbers and the source repository stay
+// empty here, and every place that shows them is hidden while they are empty.
 export const APP_LINKS = {
+  /** Shown as "Developed by …" in Help & About. Hidden while empty. */
+  developerName: 'Asfar',
   supportEmail: 'support@optizer.ae',
   /** Phone / WhatsApp for customization requests, international format without "+" (e.g. 9715XXXXXXXX). Hidden while empty. */
   contactPhone: '',
-  /** Donation page (GitHub Sponsors, PayPal, Ziina, …). The button is hidden while this is empty. */
-  supportDeveloperUrl: 'https://pay.ziina.com/Asfar?source=app',
+  /** Donation page (GitHub Sponsors, PayPal, …). The button is hidden while this is empty. */
+  supportDeveloperUrl: '',
   /** Botim number for payments inside the UAE, international format without "+". Hidden while empty. */
-  botimNumber: '971563686538',
+  botimNumber: '',
   /** Public source code repository. The link is hidden while this is empty. */
-  sourceCodeUrl: 'https://github.com/smohamedasfar-creator/smart-cheque-printer',
+  sourceCodeUrl: '',
 } as const;
 
 export type AppLink = 'email' | 'whatsapp' | 'call' | 'support' | 'source';

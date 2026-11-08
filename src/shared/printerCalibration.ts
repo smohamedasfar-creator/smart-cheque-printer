@@ -2,8 +2,9 @@
 // A4, folding it in half each way and reading the scales at the folds. A fold is exactly in the middle of the paper, so
 // no ruler is needed. The printer shifts every page the same way whatever is printed, so one calibration per tray puts
 // every cheque in place: any bank, any size, horizontal or vertical (turning the cheque turns the shift with it).
-import type { Placement, TrayGeometry, TrayKind } from './print';
-import type { PrintSettings } from './types';
+import { alignTrayView, footprint, sheetFor, TRAY_KINDS, type Placement, type TrayGeometry, type TrayKind, type TrayView } from './print';
+import { guessTray } from './loading';
+import type { ChequeLayout, PrintSettings } from './types';
 
 /** How far the printer puts its print from where it should be on the page, in mm: x to the right, y towards the end of the page. */
 export interface PageOffset {
@@ -110,3 +111,96 @@ export function withFrontFaceUp<S extends Pick<PrintSettings, 'printerName' | 'f
 export function trayGeometry(tray: TrayKind, settings: Pick<PrintSettings, 'printerName' | 'frontTrayFaceUp'>): TrayGeometry {
   return tray === 'front' && frontFacesUp(settings) ? 'front-up' : tray;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Where a cheque sits in the tray. A4 fills the tray, so the fold sheet cannot tell; a cheque is narrower and rests
+// where the tray puts small paper: in the middle (guides close from both sides, e.g. Epson), or against one side
+// (one fixed side and a sliding guide, e.g. HP ink tanks: right side). Set once per printer and tray.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Where small paper sits in a tray, as seen standing in front of the printer. */
+export type PaperSide = 'left' | 'centre' | 'right';
+
+/** A position this close to the middle counts as centred (positions are stored centred). */
+const CENTRED_MM = 0.6;
+
+export const PAPER_SIDE_LABEL: Record<PaperSide, string> = { left: 'Left side', centre: 'Centre', right: 'Right side' };
+
+interface SideRule {
+  pattern: RegExp;
+  trays: TrayKind[];
+  side: PaperSide;
+  reason: string;
+}
+
+// First match wins. These are starting guesses; the user confirms by looking at the tray.
+const SIDE_RULES: SideRule[] = [
+  { pattern: /smart ?tank|deskjet|envy|officejet|ink ?advantage|\bhp ink/i, trays: ['rear', 'front', 'manual'], side: 'right', reason: 'HP ink printers hold paper against the right side; the guide slides in from the left' },
+  { pattern: /pixma|\bmg\d{4}|\bip\d{4}|\bts\d{4}/i, trays: ['rear'], side: 'right', reason: 'Canon PIXMA back trays usually hold paper against the right side' },
+  { pattern: /epson|ecotank|\bet-\d|\bl\d{3,4}\b/i, trays: ['rear', 'front', 'manual'], side: 'centre', reason: 'Epson trays centre the paper between both guides' },
+  { pattern: /canon g\d|\bg\d{4}\b/i, trays: ['rear'], side: 'centre', reason: 'Canon G-series guides close from both sides together' },
+  { pattern: /laserjet|laser|brother|\bhl-|\b(dcp|mfc)-|kyocera|ricoh|xerox|lexmark|pantum|samsung/i, trays: ['rear', 'front', 'manual'], side: 'centre', reason: 'laser printer trays and slots centre the paper' },
+];
+
+/** The usual side for this printer and tray, with why; centre when the name says nothing useful. */
+export function guessPaperSide(printerName: string, tray: TrayKind): { side: PaperSide; reason: string | null } {
+  const rule = SIDE_RULES.find(r => r.trays.includes(tray) && r.pattern.test(printerName));
+  return rule ? { side: rule.side, reason: rule.reason } : { side: 'centre', reason: null };
+}
+
+/** Where small paper sits in this tray of the chosen printer: the user's choice, else the guess. */
+export function paperSide(settings: Pick<PrintSettings, 'printerName' | 'paperSide'>, tray: TrayKind): PaperSide {
+  return settings.paperSide?.[settings.printerName ?? '']?.[tray] ?? guessPaperSide(settings.printerName ?? '', tray).side;
+}
+
+/** True when the user has chosen the side (not just the guess). */
+export const paperSideChosen = (settings: Pick<PrintSettings, 'printerName' | 'paperSide'>, tray: TrayKind) =>
+  Boolean(settings.paperSide?.[settings.printerName ?? '']?.[tray]);
+
+export function withPaperSide<S extends Pick<PrintSettings, 'printerName' | 'paperSide'>>(settings: S, tray: TrayKind, side: PaperSide): S {
+  const printer = settings.printerName ?? '';
+  return { ...settings, paperSide: { ...settings.paperSide, [printer]: { ...(settings.paperSide?.[printer] ?? {}), [tray]: side } } };
+}
+
+/**
+ * How far (mm across the page) a centred cheque moves when it rests against `side` instead. The cheque book's
+ * positions are kept centred; this is added when printing and when drawing the tray, for any cheque size and turn.
+ */
+export function sideShiftX(layout: Pick<ChequeLayout, 'chequeWidth' | 'chequeHeight'>, tray: TrayGeometry, placement: Pick<Placement, 'rotation' | 'x'>, side: PaperSide): number {
+  if (side === 'centre') return 0;
+  const room = sheetFor(layout, placement.rotation).width - footprint(layout, placement.rotation)[0];
+  // Only a centred position moves: one the user placed against a side on purpose stays where it is.
+  if (room <= 0 || Math.abs(placement.x - room / 2) > CENTRED_MM) return 0;
+  // Seen from the front, the right side is the page's left when the tray turns the page round (back tray, face-down drawer).
+  const towardsPageRight = (side === 'right') !== TRAY_KINDS[tray].flipX;
+  return tenth(towardsPageRight ? room / 2 : -room / 2);
+}
+
+/** The tray picture with the cheque resting where this tray puts small paper (positions are stored centred). */
+export function viewOnSide(layout: ChequeLayout, tray: TrayGeometry, view: TrayView, side: PaperSide): TrayView {
+  if (side === 'centre') return view;
+  const room = sheetFor(layout, view.turn).width - footprint(layout, view.turn)[0];
+  return Math.abs(view.u - room / 2) > CENTRED_MM ? view : alignTrayView(layout, tray, view, side);
+}
+
+/** Everything the printer needs on top of the cheque book's own position: where the tray puts the cheque, then the calibration. */
+export function placementForPrinter(
+  layout: Pick<ChequeLayout, 'chequeWidth' | 'chequeHeight'>,
+  placement: Placement,
+  tray: TrayKind,
+  settings: Pick<PrintSettings, 'printerName' | 'printerOffsets' | 'paperSide' | 'frontTrayFaceUp'>,
+): Placement {
+  const dx = sideShiftX(layout, trayGeometry(tray, settings), placement, paperSide(settings, tray));
+  return calibratedPlacement({ ...placement, x: tenth(placement.x + dx) }, trayOffset(settings, tray));
+}
+
+/** The tray this printer's cheques go in: the user's choice, else the usual one for the printer model, else the back tray. */
+export function chequeTray(settings: Pick<PrintSettings, 'printerName' | 'chequeTray'>): TrayKind {
+  return settings.chequeTray?.[settings.printerName ?? ''] ?? guessTray(settings.printerName ?? '')?.tray ?? 'rear';
+}
+
+export function withChequeTray<S extends Pick<PrintSettings, 'printerName' | 'chequeTray'>>(settings: S, tray: TrayKind): S {
+  return { ...settings, chequeTray: { ...settings.chequeTray, [settings.printerName ?? '']: tray } };
+}
+
+export const TRAY_TITLE: Record<TrayKind, string> = { rear: 'Back tray', front: 'Front drawer', manual: 'Manual feed slot' };

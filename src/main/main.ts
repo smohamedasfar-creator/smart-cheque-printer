@@ -6,7 +6,7 @@ import { APP_LINKS, resolveAppLink, type AppLink } from '../shared/appLinks';
 import { buildCalibrationHtml, buildPrintHtml, pageGeometry } from '../shared/print';
 import { calibrationPattern } from '../shared/detect/calibrate';
 import { buildRulerSheetHtml } from '../shared/detect/rulerSheet';
-import { buildFoldSheetHtml, calibratedPlacement, trayOffset } from '../shared/printerCalibration';
+import { buildFoldSheetHtml, placementForPrinter } from '../shared/printerCalibration';
 import type { PrintJob } from '../preload/api';
 import { createStore, type Store } from './store';
 
@@ -31,7 +31,7 @@ async function openStore(dbPath: string): Promise<Store> {
 function placementOnPrinter(job: PrintJob): PrintJob['placement'] {
   const p = job.placement;
   if (!p || !job.tray || p.rotation === null || p.x === null || p.y === null) return p;
-  return calibratedPlacement({ rotation: p.rotation, x: p.x, y: p.y }, trayOffset(job.settings, job.tray));
+  return placementForPrinter(job.layout, { rotation: p.rotation, x: p.x, y: p.y }, job.tray, job.settings);
 }
 
 async function printJob(job: PrintJob): Promise<{ ok: boolean; error?: string }> {
@@ -73,10 +73,14 @@ async function printHtml(html: string, widthMm: number, heightMm: number, printe
   }
 }
 
+/** Checks a call before it runs (set once the store is open: the lock screen). */
+let gate: (channel: string) => void = () => {};
+
 /** Only the app's own window may call into the main process. */
 function handle(channel: string, fn: (...args: any[]) => unknown) {
   ipcMain.handle(channel, (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Request rejected');
+    gate(channel);
     return fn(...args);
   });
 }
@@ -92,23 +96,72 @@ function isSqliteFile(file: string): boolean {
   }
 }
 
+/** How long the admin password stays accepted after it was typed. */
+const ADMIN_MINUTES = 10;
+/** Error text the screens look for to ask for the admin password and try again. */
+const ADMIN_REQUIRED = 'ADMIN_REQUIRED';
+let adminUntil = 0;
+let appUnlocked = false;
+
 function registerIpc(store: Store, dbPath: string) {
+  const adminActive = () => Date.now() < adminUntil;
+  /** Throws unless the password is not needed for this kind of operation, or was typed in the last minutes. */
+  const requireAdmin = (kind: 'delete' | 'settings' | 'always') => {
+    const s = store.getSecurity();
+    if (!s.passwordSet) return;
+    const needed = kind === 'always' || (kind === 'delete' ? s.protectDelete : s.protectSettings);
+    if (needed && !adminActive()) throw new Error(ADMIN_REQUIRED);
+  };
+  // While the app is locked at start, only these work (to show the lock screen and unlock it).
+  const openWhileLocked = new Set(['security:status', 'security:login', 'app:info']);
+  gate = channel => {
+    if (openWhileLocked.has(channel)) return;
+    const s = store.getSecurity();
+    if (s.passwordSet && s.lockOnStart && !appUnlocked) throw new Error('The app is locked. Enter the admin password.');
+  };
+  handle('security:status', () => ({ ...store.getSecurity(), unlocked: adminActive(), appUnlocked: appUnlocked || !store.getSecurity().lockOnStart }));
+  handle('security:login', (password: string) => {
+    if (!store.checkPassword(String(password ?? ''))) return false;
+    appUnlocked = true;
+    adminUntil = Date.now() + ADMIN_MINUTES * 60_000;
+    return true;
+  });
+  handle('security:unlock', (password: string) => {
+    if (!store.checkPassword(String(password ?? ''))) return false;
+    adminUntil = Date.now() + ADMIN_MINUTES * 60_000;
+    return true;
+  });
+  handle('security:lock', () => {
+    adminUntil = 0;
+  });
+  handle('security:setPassword', (current: string | null, next: string | null) => {
+    store.setPassword(current === null ? null : String(current), next === null ? null : String(next));
+    // The person who just set the password stays signed in.
+    adminUntil = next === null ? 0 : Date.now() + ADMIN_MINUTES * 60_000;
+    appUnlocked = true;
+  });
+  handle('security:options', options => {
+    requireAdmin('always');
+    store.setSecurityOptions({ protectDelete: Boolean(options?.protectDelete), protectSettings: Boolean(options?.protectSettings), lockOnStart: Boolean(options?.lockOnStart) });
+  });
+
   handle('accounts:list', () => store.listAccounts());
   handle('accounts:save', account => store.saveAccount(account));
-  handle('accounts:delete', (id: number) => store.deleteAccount(id));
+  handle('accounts:delete', (id: number) => { requireAdmin('delete'); return store.deleteAccount(id); });
   handle('templates:list', () => store.listTemplates());
   handle('templates:save', template => store.saveTemplate(template));
-  handle('templates:delete', (id: number) => store.deleteTemplate(id));
+  handle('templates:delete', (id: number) => { requireAdmin('delete'); return store.deleteTemplate(id); });
   handle('payees:list', () => store.listPayees());
   handle('payees:add', (name: string) => store.addPayee(String(name)));
   handle('payees:rename', (oldName: string, newName: string) => store.renamePayee(String(oldName), String(newName)));
-  handle('payees:delete', (name: string) => store.deletePayee(String(name)));
+  handle('payees:delete', (name: string) => { requireAdmin('delete'); return store.deletePayee(String(name)); });
   handle('cheques:record', cheque => store.recordCheque(cheque));
   handle('cheques:list', filter => store.listCheques(filter ?? {}));
   handle('cheques:status', (id: number, status) => store.setChequeStatus(id, status));
-  handle('cheques:delete', (id: number) => store.deleteCheque(Number(id)));
+  handle('cheques:delete', (id: number) => { requireAdmin('delete'); return store.deleteCheque(Number(id)); });
+  handle('cheques:deleteMany', (ids: number[]) => { requireAdmin('delete'); return store.deleteCheques(Array.isArray(ids) ? ids : []); });
   handle('settings:get', () => store.getSettings());
-  handle('settings:save', settings => store.saveSettings(settings));
+  handle('settings:save', settings => { requireAdmin('settings'); return store.saveSettings(settings); });
   handle('printers:list', async () => {
     const printers = (await mainWindow?.webContents.getPrintersAsync()) ?? [];
     return printers.map(p => ({ name: p.name, isDefault: Boolean((p as { isDefault?: boolean }).isDefault) }));
@@ -146,6 +199,7 @@ function registerIpc(store: Store, dbPath: string) {
     return { saved: true, path: result.filePath };
   });
   handle('data:restore', async () => {
+    requireAdmin('delete');
     const pick = await dialog.showOpenDialog(mainWindow!, {
       properties: ['openFile'],
       filters: [{ name: 'Smart Cheque Printer backup', extensions: ['scpbackup', 'sqlite'] }],

@@ -17,12 +17,12 @@ describe('resolveAppLink', () => {
     }
   });
 
-  test('opens the Ziina support page', () => {
-    expect(resolveAppLink('support')).toBe('https://pay.ziina.com/Asfar?source=app');
-  });
-
-  test('links to the public source code', () => {
-    expect(resolveAppLink('source')).toBe('https://github.com/smohamedasfar-creator/smart-cheque-printer');
+  test('the release build carries only the developer credit: no payment link, phone or repository', () => {
+    expect(APP_LINKS.developerName).toBe('Asfar');
+    expect(resolveAppLink('support')).toBeNull();
+    expect(resolveAppLink('source')).toBeNull();
+    expect(APP_LINKS.botimNumber).toBe('');
+    expect(JSON.stringify(APP_LINKS)).not.toMatch(/ziina|smohamed|563686538|botim\.me/i);
   });
 
   test('only opens configured https links', () => {

@@ -55,6 +55,8 @@ const TAB_NAMES: Record<PositionKey, string> = {
   'rear-v': 'Back · Vertical',
   'front-h': 'Front · Horizontal',
   'front-v': 'Front · Vertical',
+  'manual-h': 'Manual slot · Horizontal',
+  'manual-v': 'Manual slot · Vertical',
 };
 
 /** A position's adjustment in short, e.g. "→1 ↑3.5 mm". */
@@ -166,6 +168,8 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
   // The cheque book screen cannot save while the real size of a photo is unknown.
   useEffect(() => onBlock?.(detection && !detection.sizeKnown ? 'Enter the real cheque width first, so the printout is the right size.' : null), [detection?.sizeKnown]);
 
+  /** Advanced layout controls (four positions, exact numbers) stay hidden until asked for. */
+  const [showMore, setShowMore] = useState(false);
   const setLayout = (layout: ChequeLayout) => setDraft(d => ({ ...d, layout }));
   // An existing FAB or RAKBANK design can take the bank library's measured writing spaces in one click.
   // Known by its lines, or by its size when the fields were moved by hand (often to make up for where a printer prints).
@@ -258,6 +262,7 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
 
         {hasLeaf && (
           <>
+            {showMore && (<>
             <div className="position-mode" role="radiogroup" aria-label="Print position setting">
               <span>Print positions:</span>
               <button type="button" role="radio" aria-checked={!manual} className={manual ? '' : 'active'} onClick={() => setMode('default')}>Default</button>
@@ -286,6 +291,7 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
               <label>X →<input type="number" step="0.5" readOnly={!editable} value={tabShift.x} onChange={e => setTabShift({ x: Number(e.target.value), y: tabShift.y })} /></label>
               <label>Y ↑<input type="number" step="0.5" readOnly={!editable} value={tabShift.y} onChange={e => setTabShift({ x: tabShift.x, y: Number(e.target.value) })} /></label>
             </div>
+            </>)}
             <div className="canvas-wrap">
               <ChequeCanvas
                 layout={shown}
@@ -318,6 +324,7 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
             <label>Date<input type="date" value={sample.date} onChange={e => setSample(s => ({ ...s, date: e.target.value }))} /></label>
           </div>
 
+          {showMore && (<>
           <h3>Where each field starts · {TAB_NAMES[tab]}</h3>
           <p className="hint">In mm from the cheque's bottom-left corner (0, 0): X across, Y up to the writing line. Length is where the line ends; longer text moves to the next line or gets smaller.</p>
           <table className="graph-table">
@@ -336,7 +343,8 @@ export function TemplateEditor({ draft, setDraft, settings, onBlock }: EditorPro
           {field && (
             <label>Height of the {field.label.toLowerCase()} space (mm)<input type="number" step="0.5" value={tenth(field.box.height)} onChange={e => setBox('height', Number(e.target.value))} /></label>
           )}
-          <p className="hint">Text size and font are set once for all cheques in Settings.</p>
+          </>)}
+          <p className="hint">Drag a field on the cheque picture to move it. Text size and font are set once for all cheques in Settings.</p>
 
           <h3>Layout options</h3>
           <label>

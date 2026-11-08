@@ -1,3 +1,4 @@
+import { withAdmin } from '../admin';
 import { useRef, useState } from 'react';
 import { blankLayout } from '../../shared/layoutDefaults';
 import { migratePositions, POSITIONS_VERSION, withReadyPositions } from '../../shared/positions';
@@ -46,7 +47,7 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
   const remove = async (account: Account) => {
     if (!confirm(`Delete the cheque book "${account.name}"? Its cheque history must be deleted first.`)) return;
     try {
-      await window.chequeApi.deleteAccount(account.id);
+      if ((await withAdmin(() => window.chequeApi.deleteAccount(account.id).then(() => true), 'Deleting a cheque book needs the admin password.')) === undefined) return;
       const t = templateOf(account);
       if (t && !accounts.some(a => a.id !== account.id && a.templateId === t.id)) await window.chequeApi.deleteTemplate(t.id);
       await onChanged();
@@ -59,7 +60,7 @@ export function ChequeBooks({ accounts, templates, settings, onChanged }: Props)
   const removeUnused = async (t: ChequeTemplate) => {
     if (!confirm(`Delete the unused cheque design "${t.name}"?`)) return;
     try {
-      await window.chequeApi.deleteTemplate(t.id);
+      if ((await withAdmin(() => window.chequeApi.deleteTemplate(t.id).then(() => true), 'Deleting a cheque design needs the admin password.')) === undefined) return;
       await onChanged();
     } catch (e) {
       fail(e);

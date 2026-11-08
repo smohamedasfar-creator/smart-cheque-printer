@@ -216,8 +216,8 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .tray-animate .tray-cheque-turn { animation: scp-cheque-turn 6s ease-in-out both; }
 .tray-animate .tray-cheque-turn.turn-over { animation: scp-cheque-turn-over 6s ease-in-out both; }
 .tray-steps li { animation: scp-step 6s linear; }
-@keyframes scp-guide { 0% { transform: translateX(var(--g-to)); } 15%, 60% { transform: translateX(var(--g-from)); } 78%, 100% { transform: translateX(var(--g-to)); } }
-@keyframes scp-cheque-in { 0%, 40% { transform: translateY(var(--from-y)); } 58%, 100% { transform: translateY(0); } }
+@keyframes scp-guide { 0%, 60% { transform: translateX(var(--g-from)); } 78%, 100% { transform: translateX(var(--g-to)); } }
+@keyframes scp-cheque-in { 0%, 40% { transform: translate(var(--from-x, 0px), var(--from-y)); } 58%, 100% { transform: translate(0, 0); } }
 @keyframes scp-cheque-turn { 0%, 20% { transform: rotate(var(--turn-from)); } 37%, 100% { transform: rotate(0deg); } }
 /* Front drawer: turn to the right end first, then over sideways like a page, then in. */
 @keyframes scp-cheque-turn-over { 0%, 18% { transform: rotate(var(--turn-from)) rotateY(0deg); } 30% { transform: rotate(0deg) rotateY(0deg); } 42%, 100% { transform: rotate(0deg) rotateY(180deg); } }
@@ -314,3 +314,37 @@ button.link { border: 0; background: none; color: var(--primary); text-decoratio
 .face-choice .hint { flex-basis: 100%; }
 .face-choice label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
 .face-choice input[type="radio"] { width: auto; margin: 0; }
+
+/* Simple printer setup */
+.simple-setup { display: flex; flex-direction: column; gap: 14px; }
+.simple-setup h2 { display: flex; align-items: center; gap: 10px; }
+.tag.ok { color: var(--ok); }
+.setup-step { display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start; }
+.setup-step > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.step-no { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+.side-icon { width: 46px; height: 30px; border: 2px solid var(--muted); border-radius: 3px; position: relative; display: block; }
+.side-icon i { position: absolute; top: 3px; bottom: 3px; width: 14px; background: var(--primary); border-radius: 2px; }
+.side-icon[data-side="left"] i { left: 2px; }
+.side-icon[data-side="centre"] i { left: calc(50% - 7px); }
+.side-icon[data-side="right"] i { right: 2px; }
+.other-tray { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
+.more-settings > summary { font-size: 14px; }
+.direction-choice { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.feed-options.three { grid-template-columns: repeat(3, 1fr); }
+.feed-options.two { grid-template-columns: repeat(2, 1fr); }
+.feed-options.two .feed-option { gap: 2px; }
+.side-choice .feed-option { align-items: center; }
+
+/* Admin password */
+.modal-backdrop { position: fixed; inset: 0; background: rgb(15 23 42 / 45%); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { width: min(420px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgb(0 0 0 / 25%); }
+.lock-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); padding: 16px; }
+.lock-screen h1 { font-size: 20px; color: var(--primary); margin: 0; }
+.admin-settings { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 16px; }
+.admin-settings h2 { display: flex; align-items: center; gap: 10px; }
+button.danger { background: #b42318; border-color: #b42318; color: #fff; }
+button.danger:disabled { opacity: 0.5; }
+/* History selection */
+.selection-bar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; margin: 8px 0; background: #e8f0fb; border: 1px solid #b7cdea; border-radius: 6px; font-size: 13px; }
+th.pick, td.pick { width: 32px; text-align: center; }
+tr.picked td { background: #f2f7fd; }

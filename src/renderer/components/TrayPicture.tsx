@@ -18,7 +18,6 @@ interface Props {
 
 const snap = (v: number) => Math.round(v * 2) / 2;
 const GUIDE_PX = 7;
-const START_GAP_PX = 8;
 
 const CAPTIONS: Record<TrayGeometry, string> = {
   rear: 'Back tray, seen from the front of the printer. The cheque faces you.',
@@ -63,8 +62,9 @@ export function TrayPicture({ layout, image, tray, view, onChange, scale = 1.25,
 
   // Where the animation starts and ends, as CSS variables, so it always matches the saved position.
   const motion = {
-    // The cheque starts inside the picture, at the end away from the printer, so its turn is visible.
-    '--from-y': `${inAtBottom ? START_GAP_PX - px(view.v) : px(sheet.height - footH - view.v) - START_GAP_PX}px`,
+    // The cheque starts in the middle of the tray, where it has room to turn (and turn over), then slides into place.
+    '--from-x': `${px(sheet.width / 2 - (view.u + footW / 2))}px`,
+    '--from-y': `${px(sheet.height / 2 - (view.v + footH / 2))}px`,
     '--turn-from': `${-view.turn}deg`,
   } as CSSProperties;
   // A guide closes from each side the cheque does not rest against.

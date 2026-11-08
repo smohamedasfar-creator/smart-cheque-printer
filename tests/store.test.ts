@@ -251,3 +251,46 @@ describe('print positions', () => {
     expect(store.listAccounts()[0].positions).toEqual([]);
   });
 });
+
+describe('deleting several cheques', () => {
+  test('deletes the chosen cheques in one go and keeps the rest', () => {
+    const a = store.saveAccount(account);
+    const ids = [1, 2, 3].map(n => store.recordCheque({ accountId: a.id, chequeNo: String(n), date: '2026-10-28', payee: `P${n}`, amountFils: 100 * n, crossing: 'none', remark: '' }).id);
+    const before = persisted;
+    expect(store.deleteCheques([ids[0], ids[2], ids[2], -1])).toBe(2);
+    expect(persisted).toBe(before + 1);
+    expect(store.listCheques({}).map(c => c.chequeNo)).toEqual(['2']);
+    expect(store.deleteCheques([])).toBe(0);
+  });
+});
+
+describe('admin password', () => {
+  test('starts with no password and nothing protected', () => {
+    expect(store.getSecurity()).toEqual({ passwordSet: false, protectDelete: false, protectSettings: false, lockOnStart: false });
+    expect(store.checkPassword('')).toBe(false);
+  });
+
+  test('setting a password protects deleting; only the right password passes; it is not stored as text', () => {
+    store.setPassword(null, 'secret1');
+    expect(store.getSecurity()).toMatchObject({ passwordSet: true, protectDelete: true });
+    expect(store.checkPassword('secret1')).toBe(true);
+    expect(store.checkPassword('secret2')).toBe(false);
+    expect(JSON.stringify(store.getSettings())).not.toContain('secret1');
+  });
+
+  test('changing or removing needs the current password; removing turns protection off', () => {
+    store.setPassword(null, 'first');
+    store.setSecurityOptions({ protectSettings: true, lockOnStart: true });
+    expect(() => store.setPassword('wrong', 'second')).toThrow(/current password/);
+    store.setPassword('first', 'second');
+    expect(store.checkPassword('second')).toBe(true);
+    expect(store.getSecurity()).toMatchObject({ protectDelete: true, protectSettings: true, lockOnStart: true });
+    store.setPassword('second', null);
+    expect(store.getSecurity()).toEqual({ passwordSet: false, protectDelete: false, protectSettings: false, lockOnStart: false });
+  });
+
+  test('rejects a short password and options without a password', () => {
+    expect(() => store.setPassword(null, 'abc')).toThrow(/at least/);
+    expect(() => store.setSecurityOptions({ lockOnStart: true })).toThrow(/password first/);
+  });
+});

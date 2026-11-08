@@ -19,6 +19,8 @@ export const READY_POSITIONS: readonly ReadyPosition[] = [
   { key: 'rear-v', tray: 'rear', leading: 270, name: 'Back tray · Vertical (date end first)' },
   { key: 'front-h', tray: 'front', leading: 0, name: 'Front tray · Horizontal (top edge first)' },
   { key: 'front-v', tray: 'front', leading: 270, name: 'Front tray · Vertical (date end first)' },
+  { key: 'manual-h', tray: 'manual', leading: 0, name: 'Manual feed slot · Horizontal (top edge first)' },
+  { key: 'manual-v', tray: 'manual', leading: 270, name: 'Manual feed slot · Vertical (date end first)' },
 ];
 
 /** A ready position as printed: the cheque centred between the guides and pushed fully in. */

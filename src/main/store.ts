@@ -1,3 +1,4 @@
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { Database, SqlValue } from 'sql.js';
 import {
   DEFAULT_SETTINGS,
@@ -63,6 +64,29 @@ export interface ChequeFilter {
 }
 
 type Row = Record<string, SqlValue>;
+
+/** What the screens may know about the admin password. */
+export interface SecurityStatus {
+  passwordSet: boolean;
+  /** Deleting cheques, cheque books, designs or payees, and restoring a backup, need the password. */
+  protectDelete: boolean;
+  /** Saving Settings needs the password. */
+  protectSettings: boolean;
+  /** The app asks for the password when it opens. */
+  lockOnStart: boolean;
+}
+
+/** Stored in the settings table under 'security': a salted scrypt hash, never the password. */
+interface StoredSecurity {
+  hash: string;
+  salt: string;
+  protectDelete: boolean;
+  protectSettings: boolean;
+  lockOnStart: boolean;
+}
+
+const NO_SECURITY: StoredSecurity = { hash: '', salt: '', protectDelete: false, protectSettings: false, lockOnStart: false };
+export const MIN_PASSWORD = 4;
 
 const SCHEMA_VERSION = 4;
 
@@ -192,6 +216,20 @@ export function createStore(db: Database, persist: () => void) {
 
   const lastId = () => Number(all('SELECT last_insert_rowid() AS id')[0].id);
 
+  const readSecurity = (): StoredSecurity => {
+    const row = all("SELECT value FROM settings WHERE key = 'security'")[0];
+    return { ...NO_SECURITY, ...(row ? JSON.parse(String(row.value)) : {}) };
+  };
+  const checkPw = (password: string): boolean => {
+    const s = readSecurity();
+    if (!s.hash || !s.salt) return false;
+    const got = scryptSync(String(password), Buffer.from(s.salt, 'hex'), 32);
+    const want = Buffer.from(s.hash, 'hex');
+    return got.length === want.length && timingSafeEqual(got, want);
+  };
+  const writeSecurity = (s: StoredSecurity) =>
+    write(() => db.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('security', ?)", [JSON.stringify(s)]));
+
   const getAccount = (id: number) => {
     const row = all('SELECT * FROM accounts WHERE id = ?', [id])[0];
     return row ? toAccount(row) : null;
@@ -312,6 +350,56 @@ export function createStore(db: Database, persist: () => void) {
 
     deleteCheque(id: number): void {
       write(() => db.run('DELETE FROM cheques WHERE id = ?', [id]));
+    },
+
+    /** Deletes several cheques at once (one save). Returns how many were deleted. */
+    deleteCheques(ids: number[]): number {
+      const clean = [...new Set(ids.map(Number).filter(n => Number.isSafeInteger(n) && n > 0))];
+      if (!clean.length) return 0;
+      return write(() => {
+        for (const id of clean) db.run('DELETE FROM cheques WHERE id = ?', [id]);
+        return clean.length;
+      });
+    },
+
+    /** The admin password settings, without the password itself. */
+    getSecurity(): SecurityStatus {
+      const s = readSecurity();
+      return { passwordSet: Boolean(s.hash), protectDelete: s.protectDelete, protectSettings: s.protectSettings, lockOnStart: s.lockOnStart };
+    },
+
+    /** True when `password` is the admin password (always false when none is set). */
+    checkPassword(password: string): boolean {
+      return checkPw(password);
+    },
+
+    /**
+     * Sets, changes or removes (next = null) the admin password. Changing or removing needs the current one.
+     * A new password starts protecting deletions; removing it switches every protection off.
+     */
+    setPassword(current: string | null, next: string | null): void {
+      const s = readSecurity();
+      if (s.hash && !checkPw(current ?? '')) throw new Error('The current password is wrong.');
+      if (next === null) {
+        writeSecurity({ hash: '', salt: '', protectDelete: false, protectSettings: false, lockOnStart: false });
+        return;
+      }
+      if (String(next).length < MIN_PASSWORD) throw new Error(`Use at least ${MIN_PASSWORD} characters.`);
+      const salt = randomBytes(16);
+      const hash = scryptSync(String(next), salt, 32).toString('hex');
+      writeSecurity({ ...s, hash, salt: salt.toString('hex'), protectDelete: s.hash ? s.protectDelete : true });
+    },
+
+    /** Which operations need the admin password (only when a password is set). */
+    setSecurityOptions(options: Partial<Pick<SecurityStatus, 'protectDelete' | 'protectSettings' | 'lockOnStart'>>): void {
+      const s = readSecurity();
+      if (!s.hash) throw new Error('Set an admin password first.');
+      writeSecurity({
+        ...s,
+        protectDelete: options.protectDelete ?? s.protectDelete,
+        protectSettings: options.protectSettings ?? s.protectSettings,
+        lockOnStart: options.lockOnStart ?? s.lockOnStart,
+      });
     },
 
     setChequeStatus(id: number, status: ChequeRecord['status']): void {

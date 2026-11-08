@@ -7,52 +7,54 @@ Built with Electron, React, TypeScript and SQLite (sql.js). Developed by **Asfar
 
 ## Features
 
+- **Simple printer setup, once per printer** (Settings → Printer setup, four steps):
+  1. choose the printer;
+  2. the tray cheques go in (back tray, front drawer or manual slot), suggested from the printer model;
+  3. where a cheque sits in that tray: centre, left side or right side, suggested from the model
+     (HP ink printers and Canon PIXMA: right side; Epson, Canon G-series and laser printers: centre);
+  4. the calibration sheet: print an A4 sheet, fold it in half each way and type the two numbers read at the folds.
+
+  Every cheque of every bank then prints in place, horizontal and vertical (the printer's shift turns with the cheque).
+  Each printer keeps its own tray, paper side and calibration.
 - **Cheque books from a scan**: upload a blank cheque leaf (PDF, JPG or PNG; full A4 scan or cropped, any orientation). The app
   finds the cheque, turns it upright, straightens it, measures it in millimetres and finds the date (line or digit boxes),
-  payee line, amount-in-words lines, amount box and "or bearer" text.
-- **Layout designer with live preview** on the uploaded leaf: drag, resize or nudge fields; set where each line starts and ends.
+  payee line, amount-in-words lines, amount box and "or bearer" text. FAB and RAKBANK cheques are recognised from the bank library.
+- **Drag to adjust**: if a field is not on its line, drag it on the cheque picture.
+- **Horizontal or vertical**: one click per cheque book and on Write Cheque, with a picture and animation of how to load the
+  cheque for the chosen printer and tray (guides, paper side, which end goes in first).
+- **One test print** on a photocopy to check; a 1 mm "Move the whole print" fine-tune if needed.
 - **Amount in words** (UK/US style, optional hyphens, fils as words or `50/100`, custom prefix/suffix) that wraps to line 2,
   never runs past a printed line, and lets you click the word that starts line 2.
 - **Text size** (8 pt and up) and **any installed font**; a long payee name stays on one line and shrinks to fit (never below 8 pt).
 - Crossing options: A/C Payee, Not Negotiable, strike "or bearer", strike "or bearer" only (when A/C PAYEE is already printed on
   the cheque), cross only, none. Each cheque layout keeps its own default, so A/C PAYEE prints once.
-- **Graph layout**: the cheque is graph paper with (0, 0) at its bottom-left corner; each writing space has an X, Y and length in mm
-  that you can type or drag.
-- **Printer calibration, once per tray**: print an A4 sheet, fold it in half each way and type the two numbers read at the
-  folds. Every cheque of every bank then prints in place, horizontal and vertical (the shift turns with the cheque).
-- **One screen per cheque book**: the cheque layout, the cheque book details and setting up printing, saved together.
-- **Four ready print positions** for every cheque book and printer: back tray and front tray, horizontal (top edge first) and
-  vertical (date end first), each with its loading animation, shown as four tabs on the cheque layout.
-  - **Default setting**: fields and one X / Y (a move of the whole print) are set on the main position, back tray horizontal;
-    the others follow it, vertical 7.5 mm higher and 6 mm further left.
-  - **Manual setting**: every position has its own fields and X / Y; changing one never changes another.
-- **Print graph** on a photocopy of the cheque to read where each line starts and type it in.
-- **Upright and the right size on upload**: a cheque scanned any way round is turned so its logo is top-left and its date
-  top-right. Scan with a dark sheet behind the cheque so its edges, and so its size, show.
-- **Set up printing in two clicks**: Test print on a photocopy, then move the whole print with Up / Down / Left / Right (1 mm each)
-  until the text sits on the lines. Advanced: a printed graph read at the paper's bottom-left corner, exact to half a millimetre.
-- **Calibrate from one scan** (Advanced): print a test page on a photocopy of the cheque and choose its scan. The page carries coded dot rows
-  across its whole width; the app finds the cheque in the scan by matching its own picture, reads the dots and works out where the
-  cheque really sits in the printer (any tray, any side, either way round), and reports a printer that scales the page.
-- **Ruler sheet for phone photos**: print the A4 ruler sheet, lay the cheque on its grey box and take a photo: the corner squares give
-  the perspective and true size.
-- **Bank library**: FAB and RAKBANK cheques are recognised and get their measured writing spaces.
-- Advanced: tray picture with a loading animation, feed direction, several saved positions, drag correction and alignment marks.
 - Cheques of any size: A4 page when the cheque fits, Letter or a page of its own size for wider cheques. Warns when text would
-  land off the page or in the printer's unprintable edge; text never grows taller than its writing space or runs off the leaf.
+  land off the page or in the printer's unprintable edge.
 - **Payments and reminders**: cheques due soon (reminders any number of days before, 15 and 7 by default, on the day and
   after it until cleared, with a Windows notification) and how much is to be paid each month, per cheque book.
 - **Payees** list (add, edit, delete) with autocomplete when writing cheques.
-- **History** with filters (customer name, date range, cheque number, cheque book), status (printed, cleared, void), delete, totals and CSV export.
+- **History** with filters (customer name, date range, cheque number, cheque book), status (printed, cleared, void), totals and CSV export;
+  tick cheques (or select all) and **Delete selected**.
+- **Admin password** (optional): choose what needs it: deleting cheques, cheque books and payees (and restoring a backup),
+  changing settings, and opening the app. Stored only as a salted scrypt hash and checked by the main process, so the
+  screens cannot skip it. Accepted for 10 minutes after it is typed.
 - **Backup and restore** of all data; **Help & About** page with a how-to guide.
 
-## Using the app
+## How to use
 
-1. **Cheque Books → Add cheque book**: drop a scan of a blank leaf (or a phone photo on the ruler sheet), check the layout and enter
-   the cheque book details on the same screen.
-2. **Set up printing** (same screen): load a photocopy of the cheque as the picture shows, press **Test print**, and if the text is
-   off the lines move the print with the arrow buttons and test again. Save.
-3. **Write Cheque**: choose the cheque book, enter payee, amount and date, and print.
+1. **Settings → Printer setup** (once per printer): choose the printer, the tray you put cheques in and where a cheque sits in it
+   (the app suggests both), then print the calibration sheet, fold it left to right and top to bottom, type the numbers on
+   scales **A** and **B**, and Save. In the print window use A4, margins None, scale 100%.
+2. **Cheque Books → Add cheque book** (once per bank account): drop a scan of a blank leaf (300 DPI, dark sheet behind it).
+   Drag any field that is not on its line, then enter the name, account number and last cheque number.
+3. **Set up printing** (same screen): choose **Horizontal** or **Vertical**, load a photocopy of the cheque as the picture shows,
+   press **Test print** and hold it over a real cheque against the light. If it is still a little off, use **Move the whole print**
+   (1 mm per click). Press **Save cheque book**.
+4. **Write Cheque**: choose the cheque book and Horizontal or Vertical, enter payee, amount and date, load the cheque as shown
+   and print.
+
+Tips: use photocopies for tests; if every cheque is off by the same amount, redo the calibration sheet; if a horizontal cheque
+does not feed, use Vertical; with two printers, choose the printer in Settings (each keeps its own setup).
 
 Developers: `npm test` runs the unit tests (including a virtual-printer physics model); `npm run test:print` prints real PDFs through
 Chromium and measures every field.
@@ -105,8 +107,7 @@ After `npm run build`, `npx electron scripts/smoke.cjs out scan.pdf` drives the 
 
 - Help and bug reports: **support@optizer.ae** (please never send real cheque scans or account details)
 - Customization (custom layouts, features, setup, training): **support@optizer.ae**
-- Smart Cheque Printer is free and open source. If it helps you, you can support its development:
-  [pay with Ziina](https://pay.ziina.com/Asfar?source=app), or with Botim in the UAE: **+971 56 368 6538**
+- Smart Cheque Printer is free and open source.
 
 ## Contributing
 

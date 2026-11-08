@@ -1,3 +1,4 @@
+import { withAdmin } from '../admin';
 import { useEffect, useState } from 'react';
 
 const cleanError = (e: unknown) => String(e).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, '');
@@ -27,7 +28,7 @@ export function Payees() {
 
   const add = () => run(async () => { await window.chequeApi.addPayee(newName); setNewName(''); }, `Added "${newName.trim()}".`);
   const saveEdit = () => editing && run(async () => { await window.chequeApi.renamePayee(editing.from, editing.to); setEditing(null); }, 'Payee updated.');
-  const remove = (name: string) => confirm(`Delete "${name}" from the payee list?`) && run(() => window.chequeApi.deletePayee(name), `Deleted "${name}".`);
+  const remove = (name: string) => confirm(`Delete "${name}" from the payee list?`) && run(async () => { if (!(await withAdmin(() => window.chequeApi.deletePayee(name).then(() => true), 'Deleting payees needs the admin password.'))) throw new Error('Not deleted: the admin password is needed.'); }, `Deleted "${name}".`);
 
   const shown = payees.filter(p => p.toLowerCase().includes(search.trim().toLowerCase()));
 
